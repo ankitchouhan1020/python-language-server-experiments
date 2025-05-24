@@ -162,29 +162,7 @@ fn to_lsp_symbol_information(
     })
 }
 
-/// Handle a workspace symbol request synchronously (for tests)
-#[cfg(test)]
-fn handle_workspace_symbol_request(
-    params: WorkspaceSymbolParams,
-    functions: &HashSet<Symbol>,
-    classes: &HashSet<Symbol>,
-    path_registry: &PathRegistry,
-) -> Vec<SymbolInformation> {
-    // Convert to Arc types for the async function
-    let functions_arc = Arc::new(functions.clone());
-    let classes_arc = Arc::new(classes.clone());
-    let path_registry_arc = Arc::new(path_registry.clone());
 
-    // Use a basic async runtime to call the async function
-    tokio::runtime::Runtime::new()
-        .unwrap()
-        .block_on(handle_workspace_symbol_request_async(
-            params,
-            functions_arc,
-            classes_arc,
-            path_registry_arc,
-        ))
-}
 
 /// Handle a workspace symbol request from the LSP client asynchronously
 async fn handle_workspace_symbol_request_async(
@@ -718,8 +696,8 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn test_handle_workspace_symbol_request_empty_query() {
+    #[tokio::test]
+    async fn test_handle_workspace_symbol_request_empty_query() {
         let functions = HashSet::new();
         let classes = HashSet::new();
         let registry = create_test_path_registry();
@@ -728,17 +706,17 @@ mod tests {
             ..Default::default()
         };
 
-        let results = handle_workspace_symbol_request(
+        let results = handle_workspace_symbol_request_async(
             params,
-            &functions,
-            &classes,
-            &registry,
-        );
+            Arc::new(functions),
+            Arc::new(classes),
+            Arc::new(registry),
+        ).await;
         assert!(results.is_empty());
     }
 
-    #[test]
-    fn test_handle_workspace_symbol_request_no_matches() {
+    #[tokio::test]
+    async fn test_handle_workspace_symbol_request_no_matches() {
         let registry = create_test_path_registry();
         let functions: HashSet<Symbol> = [create_test_symbol(
             "func_a",
@@ -765,17 +743,17 @@ mod tests {
             ..Default::default()
         };
 
-        let results = handle_workspace_symbol_request(
+        let results = handle_workspace_symbol_request_async(
             params,
-            &functions,
-            &classes,
-            &registry,
-        );
+            Arc::new(functions),
+            Arc::new(classes),
+            Arc::new(registry),
+        ).await;
         assert!(results.is_empty());
     }
 
-    #[test]
-    fn test_handle_workspace_symbol_request_finds_symbol() {
+    #[tokio::test]
+    async fn test_handle_workspace_symbol_request_finds_symbol() {
         let registry = create_test_path_registry();
         let functions: HashSet<Symbol> = [
             create_test_symbol("find_this_func", SymbolType::Function, 5, 0, None, "file1"),
@@ -798,12 +776,12 @@ mod tests {
             query: "find_this_f".to_string(),
             ..Default::default()
         };
-        let results_func = handle_workspace_symbol_request(
+        let results_func = handle_workspace_symbol_request_async(
             params_func,
-            &functions,
-            &classes,
-            &registry,
-        );
+            Arc::new(functions.clone()),
+            Arc::new(classes.clone()),
+            Arc::new(registry.clone()),
+        ).await;
         assert_eq!(results_func.len(), 1);
         assert!(results_func[0].name.starts_with("find_this_func"));
         assert_eq!(results_func[0].kind, SymbolKind::FUNCTION);
@@ -812,12 +790,12 @@ mod tests {
             query: "FindThisC".to_string(),
             ..Default::default()
         };
-        let results_class = handle_workspace_symbol_request(
+        let results_class = handle_workspace_symbol_request_async(
             params_class,
-            &functions,
-            &classes,
-            &registry,
-        );
+            Arc::new(functions.clone()),
+            Arc::new(classes.clone()),
+            Arc::new(registry.clone()),
+        ).await;
         assert_eq!(results_class.len(), 1);
         assert!(results_class[0].name.starts_with("FindThisClass"));
         assert_eq!(results_class[0].kind, SymbolKind::CLASS);
@@ -826,12 +804,12 @@ mod tests {
             query: "find".to_string(),
             ..Default::default()
         };
-        let results_multi = handle_workspace_symbol_request(
+        let results_multi = handle_workspace_symbol_request_async(
             params_multi,
-            &functions,
-            &classes,
-            &registry,
-        );
+            Arc::new(functions),
+            Arc::new(classes),
+            Arc::new(registry),
+        ).await;
         let get_base_name =
             |s: &SymbolInformation| s.name.split(' ').next().unwrap_or("").to_string();
         assert_eq!(results_multi.len(), 2);
