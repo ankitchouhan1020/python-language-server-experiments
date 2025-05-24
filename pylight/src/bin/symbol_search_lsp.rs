@@ -1,9 +1,7 @@
 use anyhow::Result;
 use clap::Parser as ClapParser;
-use flate2::read::GzDecoder;
 use std::collections::HashSet;
-use std::fs::File;
-use std::io::{stderr, BufReader};
+use std::io::stderr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
@@ -22,7 +20,7 @@ use serde_json::{self, Value};
 use symbol_experiments::files::list_python_files;
 use symbol_experiments::python::parse_python_files_parallel;
 use symbol_experiments::search::search_symbols;
-use symbol_experiments::symbols::{PathRegistry, Symbol, SymbolData, SymbolStats, SymbolType};
+use symbol_experiments::symbols::{PathRegistry, Symbol, SymbolStats, SymbolType};
 
 #[derive(ClapParser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -35,60 +33,9 @@ struct Args {
     #[arg(short, long)]
     follow_links: bool,
 
-    /// Load symbols from this file instead of scanning directory
-    #[arg(short, long)]
-    load: Option<PathBuf>,
-
     /// Listen on this TCP port instead of using stdio
     #[arg(long)]
     port: Option<u16>,
-}
-
-/// Load symbols from a previously saved file
-fn load_symbols_from_file(
-    path: &PathBuf,
-) -> Result<(HashSet<Symbol>, HashSet<Symbol>, PathRegistry)> {
-    info!("Loading symbols from {}...", path.display());
-
-    let file = File::open(path)?;
-    let reader = BufReader::new(file);
-    let decoder = GzDecoder::new(reader);
-
-    info!("Starting deserialization...");
-    let data: SymbolData = bincode::deserialize_from(decoder)?;
-
-    info!("Converting to symbol collections...");
-    let (functions, classes, paths) = data.into_symbols();
-
-    // Create a new PathRegistry and populate it with the exact same paths in the same order
-    let mut path_registry = PathRegistry::new();
-
-    // First register all paths to ensure they have the same indices as when saved
-    for (i, path) in paths.iter().enumerate() {
-        let index = path_registry.register_path(path.clone());
-        // Sanity check - make sure the index matches the position
-        assert_eq!(
-            index,
-            i,
-            "Path registry indexing error: expected index {} for path {}, got {}",
-            i,
-            path.display(),
-            index
-        );
-    }
-
-    info!(
-        "Load complete! Loaded {} functions, {} classes, and {} paths",
-        functions.len(),
-        classes.len(),
-        paths.len()
-    );
-
-    Ok((
-        functions.into_iter().collect(),
-        classes.into_iter().collect(),
-        path_registry,
-    ))
 }
 
 /// Convert a Symbol to an LSP SymbolInformation
@@ -407,28 +354,20 @@ fn main() -> Result<()> {
 
     info!("Starting LSP server with args: {:?}", args);
 
-    // Decide whether to load from file or scan directory
-    let (functions, classes, path_registry) = if let Some(load_path) = &args.load {
-        info!("Loading symbols from file: {}", load_path.display());
-        load_symbols_from_file(load_path)?
-    } else {
-        info!("Scanning directory: {}", args.directory.display());
+    info!("Scanning directory: {}", args.directory.display());
 
-        // Find all Python files
-        let python_files: Vec<PathBuf> =
-            list_python_files(&args.directory, args.follow_links).collect();
-        info!("Found {} Python files", python_files.len());
+    // Find all Python files
+    let python_files: Vec<PathBuf> =
+        list_python_files(&args.directory, args.follow_links).collect();
+    info!("Found {} Python files", python_files.len());
 
-        // Parse Python files and collect symbols
-        let stats = SymbolStats::new();
-        parse_python_files_parallel(&python_files, &args.directory, &stats)?;
+    // Parse Python files and collect symbols
+    let stats = SymbolStats::new();
+    parse_python_files_parallel(&python_files, &args.directory, &stats)?;
 
-        let functions = stats.functions.lock().unwrap().clone();
-        let classes = stats.classes.lock().unwrap().clone();
-        let path_registry = stats.path_registry.lock().unwrap().clone();
-
-        (functions, classes, path_registry)
-    };
+    let functions = stats.functions.lock().unwrap().clone();
+    let classes = stats.classes.lock().unwrap().clone();
+    let path_registry = stats.path_registry.lock().unwrap().clone();
 
     info!(
         "Symbol loading complete in {}ms",
@@ -449,40 +388,10 @@ fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use flate2::write::GzEncoder;
-    use flate2::Compression;
     use lsp_types::{Position, Range, SymbolKind, Uri};
-    use serde_json::{json, Value};
     use std::collections::HashSet;
-    use std::io::{self, BufRead, BufReader, Write};
     use std::path::PathBuf;
-    use std::process::{Command, Stdio};
-    use std::sync::Once;
-    use symbol_experiments::symbols::{ParentContext, SymbolContext, SymbolData, SymbolType};
-    use tempfile::NamedTempFile;
-
-    // Ensure the binary is built before running integration tests
-    static BUILD: Once = Once::new();
-    fn ensure_binary_built() {
-        BUILD.call_once(|| {
-            let status = Command::new("cargo")
-                .args(["build", "--bin", "symbol_search_lsp"])
-                .status()
-                .expect("Failed to execute cargo build");
-            assert!(status.success(), "Cargo build failed");
-        });
-    }
-
-    // Helper to get the path to the built binary
-    fn get_binary_path() -> PathBuf {
-        // Assumes standard cargo build directory structure
-        let mut path = std::env::current_exe().expect("Failed to get current exe path");
-        path.pop(); // Pop the executable name
-        if path.ends_with("deps") {
-            path.pop(); // Pop "deps"
-        }
-        path.join("symbol_search_lsp") // Adjust if your binary name is different
-    }
+    use symbol_experiments::symbols::{ParentContext, SymbolContext, SymbolType};
 
     // Helper function to create a simple PathRegistry for tests
     fn create_test_path_registry() -> PathRegistry {
@@ -520,75 +429,6 @@ mod tests {
                 module: module.to_string(),
             },
         }
-    }
-
-    // Helper to write LSP messages
-    fn write_lsp_message<W: Write>(writer: &mut W, message: &Value) -> io::Result<()> {
-        let msg_str = message.to_string();
-        write!(
-            writer,
-            "Content-Length: {}\r\n\r\n{}",
-            msg_str.len(),
-            msg_str
-        )
-    }
-
-    // Helper to read LSP messages
-    fn read_lsp_message<R: BufRead>(reader: &mut R) -> io::Result<Option<Value>> {
-        let mut content_length: Option<usize> = None;
-        let mut headers = String::new();
-
-        // Read headers
-        loop {
-            headers.clear();
-            if reader.read_line(&mut headers)? == 0 {
-                return Ok(None); // EOF
-            }
-            if headers.trim().is_empty() {
-                break; // End of headers
-            }
-            if let Some(len_str) = headers.strip_prefix("Content-Length: ") {
-                if let Ok(len) = len_str.trim().parse::<usize>() {
-                    content_length = Some(len);
-                }
-            }
-        }
-
-        // Read body
-        if let Some(len) = content_length {
-            let mut body_buf = vec![0; len];
-            reader.read_exact(&mut body_buf)?;
-            let body_str = String::from_utf8(body_buf)
-                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-            serde_json::from_str(&body_str)
-                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
-                .map(Some)
-        } else {
-            Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "Missing Content-Length header",
-            ))
-        }
-    }
-
-    // Helper to create a temporary symbol file for testing
-    fn create_test_symbol_file(
-        functions: &HashSet<Symbol>,
-        classes: &HashSet<Symbol>,
-        path_registry: &PathRegistry,
-    ) -> Result<NamedTempFile> {
-        let temp_file = NamedTempFile::new()?;
-        let file = File::create(temp_file.path())?;
-        let encoder = GzEncoder::new(file, Compression::default());
-
-        let symbol_data = SymbolData::new(
-            functions.iter().cloned().collect(),
-            classes.iter().cloned().collect(),
-            path_registry.paths.clone(),
-        );
-
-        bincode::serialize_into(encoder, &symbol_data)?;
-        Ok(temp_file)
     }
 
     #[test]
@@ -816,158 +656,5 @@ mod tests {
         let names: HashSet<String> = results_multi.iter().map(get_base_name).collect();
         assert!(names.contains("find_this_func"));
         assert!(names.contains("FindThisClass"));
-    }
-
-    #[test]
-    fn test_lsp_server_integration_symbol_search() -> Result<()> {
-        ensure_binary_built();
-
-        let registry = create_test_path_registry();
-        let functions: HashSet<Symbol> = [
-            create_test_symbol(
-                "searchable_func",
-                SymbolType::Function,
-                10,
-                0,
-                None,
-                "file1",
-            ),
-            create_test_symbol("another_func", SymbolType::Function, 20, 0, None, "file1"),
-        ]
-        .into_iter()
-        .collect();
-        let classes: HashSet<Symbol> = [create_test_symbol(
-            "SearchableClass",
-            SymbolType::Class,
-            5,
-            1,
-            None,
-            "file2",
-        )]
-        .into_iter()
-        .collect();
-
-        let temp_symbol_file = create_test_symbol_file(&functions, &classes, &registry)?;
-        let symbol_file_path = temp_symbol_file.path().to_str().unwrap();
-
-        let binary_path = get_binary_path();
-        let mut child = Command::new(&binary_path)
-            .args(["--load", symbol_file_path])
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .expect("Failed to spawn LSP server process");
-
-        let mut stdin = child.stdin.take().expect("Failed to open stdin");
-        let stdout = child.stdout.take().expect("Failed to open stdout");
-        let mut reader = BufReader::new(stdout);
-
-        let init_params = json!({
-            "processId": 1234,
-            "rootUri": null,
-            "capabilities": {},
-            "trace": "off"
-        });
-        let init_request = json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "initialize",
-            "params": init_params
-        });
-        write_lsp_message(&mut stdin, &init_request)?;
-        stdin.flush()?;
-
-        let _init_response =
-            read_lsp_message(&mut reader)?.expect("Server did not send initialize response");
-
-        let initialized_notification = json!({
-            "jsonrpc": "2.0",
-            "method": "initialized",
-            "params": {}
-        });
-        write_lsp_message(&mut stdin, &initialized_notification)?;
-        stdin.flush()?;
-
-        let query = "searchable";
-        let symbol_request_params = json!({ "query": query });
-        let symbol_request = json!({
-            "jsonrpc": "2.0",
-            "id": 2,
-            "method": "workspace/symbol",
-            "params": symbol_request_params
-        });
-        write_lsp_message(&mut stdin, &symbol_request)?;
-        stdin.flush()?;
-
-        let symbol_response =
-            read_lsp_message(&mut reader)?.expect("Server did not send symbol response");
-
-        assert_eq!(symbol_response["id"], 2);
-        assert!(symbol_response["error"].is_null());
-
-        let result_value = symbol_response["result"].clone();
-        let symbols: Vec<SymbolInformation> =
-            serde_json::from_value(result_value).expect("Failed to deserialize symbol information");
-
-        assert_eq!(symbols.len(), 2);
-
-        let get_base_name =
-            |s: &SymbolInformation| s.name.split(' ').next().unwrap_or("").to_string();
-        let names: HashSet<String> = symbols.iter().map(get_base_name).collect();
-
-        assert!(names.contains("searchable_func"));
-        assert!(names.contains("SearchableClass"));
-
-        let func_symbol = symbols
-            .iter()
-            .find(|s| get_base_name(s) == "searchable_func")
-            .unwrap();
-        assert_eq!(func_symbol.kind, SymbolKind::FUNCTION);
-        let expected_func_uri: Uri = Url::from_file_path("/test/path/file1.py")
-            .unwrap()
-            .as_str()
-            .parse()?;
-        assert_eq!(func_symbol.location.uri, expected_func_uri);
-        assert_eq!(func_symbol.location.range.start.line, 9);
-
-        let class_symbol = symbols
-            .iter()
-            .find(|s| get_base_name(s) == "SearchableClass")
-            .unwrap();
-        assert_eq!(class_symbol.kind, SymbolKind::CLASS);
-        let expected_class_uri: Uri = Url::from_file_path("/test/path/file2.py")
-            .unwrap()
-            .as_str()
-            .parse()?;
-        assert_eq!(class_symbol.location.uri, expected_class_uri);
-        assert_eq!(class_symbol.location.range.start.line, 4);
-
-        let shutdown_request = json!({
-            "jsonrpc": "2.0",
-            "id": 3,
-            "method": "shutdown",
-            "params": null
-        });
-        write_lsp_message(&mut stdin, &shutdown_request)?;
-        stdin.flush()?;
-
-        let _shutdown_response =
-            read_lsp_message(&mut reader)?.expect("Server did not send shutdown response");
-        assert_eq!(_shutdown_response["id"], 3);
-        assert!(_shutdown_response["result"].is_null());
-
-        let exit_notification = json!({
-            "jsonrpc": "2.0",
-            "method": "exit",
-            "params": null
-        });
-        write_lsp_message(&mut stdin, &exit_notification)?;
-        stdin.flush()?;
-
-        let status = child.wait()?;
-        assert!(status.success());
-
-        Ok(())
     }
 }
