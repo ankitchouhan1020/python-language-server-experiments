@@ -3,7 +3,7 @@ use clap::Parser as ClapParser;
 use std::collections::HashSet;
 use std::io::stderr;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::Instant;
 use tokio::runtime::Runtime;
 use tracing::info;
@@ -22,7 +22,42 @@ use symbol_experiments::python::parse_python_files_parallel;
 use symbol_experiments::search::search_symbols;
 use symbol_experiments::symbols::{PathRegistry, Symbol, SymbolStats, SymbolType};
 
-#[derive(ClapParser, Debug)]
+/// Shared state for the LSP server that tracks symbol loading status
+#[derive(Debug)]
+struct ServerState {
+    /// The loaded symbol data, None if still loading
+    symbol_data: Option<SymbolData>,
+    /// Whether the initial indexing is complete
+    indexing_complete: bool,
+}
+
+/// Container for all symbol data
+#[derive(Debug, Clone)]
+struct SymbolData {
+    functions: HashSet<Symbol>,
+    classes: HashSet<Symbol>,
+    path_registry: PathRegistry,
+}
+
+impl ServerState {
+    fn new() -> Self {
+        Self {
+            symbol_data: None,
+            indexing_complete: false,
+        }
+    }
+
+    fn set_symbols(&mut self, data: SymbolData) {
+        self.symbol_data = Some(data);
+        self.indexing_complete = true;
+    }
+
+    fn is_ready(&self) -> bool {
+        self.indexing_complete && self.symbol_data.is_some()
+    }
+}
+
+#[derive(ClapParser, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
 struct Args {
     /// Directory to scan (defaults to current directory)
@@ -109,14 +144,10 @@ fn to_lsp_symbol_information(
     })
 }
 
-
-
 /// Handle a workspace symbol request from the LSP client asynchronously
 async fn handle_workspace_symbol_request_async(
     params: WorkspaceSymbolParams,
-    functions: Arc<HashSet<Symbol>>,
-    classes: Arc<HashSet<Symbol>>,
-    path_registry: Arc<PathRegistry>,
+    server_state: Arc<RwLock<ServerState>>,
 ) -> Vec<SymbolInformation> {
     info!(
         "Handling workspace symbol request asynchronously: query='{}'",
@@ -128,13 +159,23 @@ async fn handle_workspace_symbol_request_async(
         return Vec::new();
     }
 
+    // Check if symbols are loaded
+    let symbol_data = {
+        let state = server_state.read().unwrap();
+        if !state.is_ready() {
+            info!("Symbols not ready yet, returning empty result");
+            return Vec::new();
+        }
+        state.symbol_data.clone().unwrap()
+    };
+
     // Perform the search
     let search_start = Instant::now();
     let (results, metrics) = search_symbols(
         &params.query,
-        &functions,
-        &classes,
-        &path_registry,
+        &symbol_data.functions,
+        &symbol_data.classes,
+        &symbol_data.path_registry,
         false,
     );
     let search_time = search_start.elapsed();
@@ -162,7 +203,9 @@ async fn handle_workspace_symbol_request_async(
     // Convert the results to LSP format, filtering out None values from conversion errors
     let lsp_symbols: Vec<SymbolInformation> = results
         .iter()
-        .filter_map(|(symbol, score)| to_lsp_symbol_information(symbol, &path_registry, *score)) // Use filter_map
+        .filter_map(|(symbol, score)| {
+            to_lsp_symbol_information(symbol, &symbol_data.path_registry, *score)
+        }) // Use filter_map
         .take(max_results)
         .collect();
 
@@ -171,25 +214,11 @@ async fn handle_workspace_symbol_request_async(
 }
 
 /// Main LSP server loop
-fn run_server(
-    functions: HashSet<Symbol>,
-    classes: HashSet<Symbol>,
-    path_registry: PathRegistry,
-    port: Option<u16>, // Added port argument
-) -> Result<()> {
-    info!(
-        "Starting LSP server with {} functions and {} classes",
-        functions.len(),
-        classes.len()
-    );
+fn run_server(server_state: Arc<RwLock<ServerState>>, port: Option<u16>) -> Result<()> {
+    info!("Starting LSP server");
 
     // Create a tokio runtime for handling async tasks
     let rt = Runtime::new()?;
-
-    // Wrap our data structures in Arc for sharing between threads
-    let functions = Arc::new(functions);
-    let classes = Arc::new(classes);
-    let path_registry = Arc::new(path_registry);
 
     // Create the LSP connection based on whether a port is specified
     let (connection, io_threads) = if let Some(port) = port {
@@ -235,9 +264,7 @@ fn run_server(
                         info!("Received workspace/symbol request with id: {:?}", req.id);
 
                         // Clone the necessary data for the async task
-                        let functions_clone = functions.clone();
-                        let classes_clone = classes.clone();
-                        let path_registry_clone = path_registry.clone();
+                        let server_state_clone = server_state.clone();
                         let sender_clone = sender.clone();
                         let req_id = req.id.clone();
 
@@ -252,9 +279,7 @@ fn run_server(
                                 rt.spawn(async move {
                                     let symbols = handle_workspace_symbol_request_async(
                                         params,
-                                        functions_clone,
-                                        classes_clone,
-                                        path_registry_clone,
+                                        server_state_clone,
                                     )
                                     .await;
 
@@ -338,22 +363,11 @@ fn run_server(
     Ok(())
 }
 
-fn main() -> Result<()> {
-    // Initialize tracing to write to stderr
-    // Default to INFO level if RUST_LOG environment variable is not set.
-    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
-
-    tracing_subscriber::fmt()
-        .with_writer(stderr) // Write logs to stderr
-        .with_env_filter(env_filter) // Use the determined filter
-        .with_ansi(false) // Disable ANSI escape sequences for cleaner output in VS Code
-        .init();
-
-    let args = Args::parse();
+/// Background task to bootstrap symbol loading
+async fn bootstrap_symbols(args: Args, server_state: Arc<RwLock<ServerState>>) -> Result<()> {
     let start = Instant::now();
 
-    info!("Starting LSP server with args: {:?}", args);
-
+    info!("Starting symbol bootstrap process");
     info!("Scanning directory: {}", args.directory.display());
 
     // Find all Python files
@@ -379,8 +393,52 @@ fn main() -> Result<()> {
         classes.len()
     );
 
-    // Run the LSP server with the loaded symbols
-    run_server(functions, classes, path_registry, args.port)?;
+    // Update the server state with loaded symbols
+    {
+        let mut state = server_state.write().unwrap();
+        state.set_symbols(SymbolData {
+            functions,
+            classes,
+            path_registry,
+        });
+    }
+
+    info!("Symbol bootstrap process completed");
+    Ok(())
+}
+
+fn main() -> Result<()> {
+    // Initialize tracing to write to stderr
+    // Default to INFO level if RUST_LOG environment variable is not set.
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+
+    tracing_subscriber::fmt()
+        .with_writer(stderr) // Write logs to stderr
+        .with_env_filter(env_filter) // Use the determined filter
+        .with_ansi(false) // Disable ANSI escape sequences for cleaner output in VS Code
+        .init();
+
+    let args = Args::parse();
+
+    info!("Starting LSP server with args: {:?}", args);
+
+    // Create shared server state
+    let server_state = Arc::new(RwLock::new(ServerState::new()));
+
+    // Create a tokio runtime for the bootstrap process
+    let rt = Runtime::new()?;
+
+    // Start the bootstrap process in the background
+    let bootstrap_state = server_state.clone();
+    let bootstrap_args = args.clone();
+    rt.spawn(async move {
+        if let Err(e) = bootstrap_symbols(bootstrap_args, bootstrap_state).await {
+            tracing::error!("Bootstrap process failed: {}", e);
+        }
+    });
+
+    // Start the LSP server immediately (non-blocking)
+    run_server(server_state, args.port)?;
 
     Ok(())
 }
@@ -538,20 +596,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_handle_workspace_symbol_request_empty_query() {
-        let functions = HashSet::new();
-        let classes = HashSet::new();
-        let registry = create_test_path_registry();
+        let server_state = Arc::new(RwLock::new(ServerState::new()));
         let params = WorkspaceSymbolParams {
             query: "".to_string(),
             ..Default::default()
         };
 
-        let results = handle_workspace_symbol_request_async(
-            params,
-            Arc::new(functions),
-            Arc::new(classes),
-            Arc::new(registry),
-        ).await;
+        let results = handle_workspace_symbol_request_async(params, server_state).await;
         assert!(results.is_empty());
     }
 
@@ -578,17 +629,23 @@ mod tests {
         )]
         .into_iter()
         .collect();
+
+        let server_state = Arc::new(RwLock::new(ServerState::new()));
+        {
+            let mut state = server_state.write().unwrap();
+            state.set_symbols(SymbolData {
+                functions,
+                classes,
+                path_registry: registry,
+            });
+        }
+
         let params = WorkspaceSymbolParams {
             query: "nonexistent".to_string(),
             ..Default::default()
         };
 
-        let results = handle_workspace_symbol_request_async(
-            params,
-            Arc::new(functions),
-            Arc::new(classes),
-            Arc::new(registry),
-        ).await;
+        let results = handle_workspace_symbol_request_async(params, server_state).await;
         assert!(results.is_empty());
     }
 
@@ -612,16 +669,22 @@ mod tests {
         .into_iter()
         .collect();
 
+        let server_state = Arc::new(RwLock::new(ServerState::new()));
+        {
+            let mut state = server_state.write().unwrap();
+            state.set_symbols(SymbolData {
+                functions: functions.clone(),
+                classes: classes.clone(),
+                path_registry: registry.clone(),
+            });
+        }
+
         let params_func = WorkspaceSymbolParams {
             query: "find_this_f".to_string(),
             ..Default::default()
         };
-        let results_func = handle_workspace_symbol_request_async(
-            params_func,
-            Arc::new(functions.clone()),
-            Arc::new(classes.clone()),
-            Arc::new(registry.clone()),
-        ).await;
+        let results_func =
+            handle_workspace_symbol_request_async(params_func, server_state.clone()).await;
         assert_eq!(results_func.len(), 1);
         assert!(results_func[0].name.starts_with("find_this_func"));
         assert_eq!(results_func[0].kind, SymbolKind::FUNCTION);
@@ -630,12 +693,8 @@ mod tests {
             query: "FindThisC".to_string(),
             ..Default::default()
         };
-        let results_class = handle_workspace_symbol_request_async(
-            params_class,
-            Arc::new(functions.clone()),
-            Arc::new(classes.clone()),
-            Arc::new(registry.clone()),
-        ).await;
+        let results_class =
+            handle_workspace_symbol_request_async(params_class, server_state.clone()).await;
         assert_eq!(results_class.len(), 1);
         assert!(results_class[0].name.starts_with("FindThisClass"));
         assert_eq!(results_class[0].kind, SymbolKind::CLASS);
@@ -644,12 +703,7 @@ mod tests {
             query: "find".to_string(),
             ..Default::default()
         };
-        let results_multi = handle_workspace_symbol_request_async(
-            params_multi,
-            Arc::new(functions),
-            Arc::new(classes),
-            Arc::new(registry),
-        ).await;
+        let results_multi = handle_workspace_symbol_request_async(params_multi, server_state).await;
         let get_base_name =
             |s: &SymbolInformation| s.name.split(' ').next().unwrap_or("").to_string();
         assert_eq!(results_multi.len(), 2);
