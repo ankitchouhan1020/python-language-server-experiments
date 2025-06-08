@@ -196,11 +196,16 @@ pub fn get_module_name(path: &Path) -> String {
 }
 
 pub fn get_fully_qualified_module(path: &Path, base_dir: &Path) -> String {
-    path.strip_prefix(base_dir)
-        .ok()
-        .and_then(|p| p.parent())
-        .map(|p| p.to_string_lossy().replace('/', "."))
-        .unwrap_or_else(|| "unknown".to_string())
+    match path.strip_prefix(base_dir) {
+        Ok(relative) => match relative.parent() {
+            Some(parent) if !parent.as_os_str().is_empty() => {
+                parent.to_string_lossy().replace('/', ".")
+            }
+            // File is directly under the base directory
+            _ => String::new(),
+        },
+        Err(_) => "unknown".to_string(),
+    }
 }
 
 pub fn get_node_text(node: Node, source: &str) -> String {
@@ -475,6 +480,12 @@ mod tests {
         assert_eq!(
             get_fully_qualified_module(Path::new("/base/dir/module/file.py"), base_dir),
             "module"
+        );
+
+        // File directly under the base directory should have an empty module path
+        assert_eq!(
+            get_fully_qualified_module(Path::new("/base/dir/root.py"), base_dir),
+            ""
         );
 
         assert_eq!(
