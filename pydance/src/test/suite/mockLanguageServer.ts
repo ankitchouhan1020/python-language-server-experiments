@@ -1,4 +1,4 @@
-import * as vscode from 'vscode';
+import * as vscode from "vscode";
 
 // Mock symbol data based on test.py
 export const mockSymbols: vscode.SymbolInformation[] = [
@@ -49,7 +49,9 @@ export const mockSymbols: vscode.SymbolInformation[] = [
   ),
 ];
 
-export class MockWorkspaceSymbolProvider implements vscode.WorkspaceSymbolProvider {
+export class MockWorkspaceSymbolProvider
+  implements vscode.WorkspaceSymbolProvider
+{
   provideWorkspaceSymbols(
     query: string,
     _token: vscode.CancellationToken
@@ -58,9 +60,9 @@ export class MockWorkspaceSymbolProvider implements vscode.WorkspaceSymbolProvid
     if (!query) {
       return mockSymbols;
     }
-    
+
     const lowerQuery = query.toLowerCase();
-    return mockSymbols.filter(symbol => 
+    return mockSymbols.filter((symbol) =>
       symbol.name.toLowerCase().includes(lowerQuery)
     );
   }
@@ -68,13 +70,13 @@ export class MockWorkspaceSymbolProvider implements vscode.WorkspaceSymbolProvid
 
 export function registerMockProviders(): vscode.Disposable[] {
   const disposables: vscode.Disposable[] = [];
-  
+
   // Register mock workspace symbol provider
   disposables.push(
     vscode.languages.registerWorkspaceSymbolProvider(
       new MockWorkspaceSymbolProvider()
     )
   );
-  
+
   return disposables;
 }

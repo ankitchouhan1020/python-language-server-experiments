@@ -17,7 +17,7 @@ export function activate(context: vscode.ExtensionContext) {
   outputChannel.appendLine(`Server path: ${serverPath}`);
 
   // Get the workspace root path
-  let workspaceRoot =
+  const workspaceRoot =
     vscode.workspace.workspaceFolders &&
     vscode.workspace.workspaceFolders.length > 0
       ? vscode.workspace.workspaceFolders[0].uri.fsPath

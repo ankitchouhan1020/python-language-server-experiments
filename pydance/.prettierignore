@@ -1,0 +1,18 @@
+# Ignore artifacts:
+out/
+dist/
+coverage/
+.vscode-test/
+
+# Ignore all HTML files:
+*.html
+
+# Ignore node modules
+node_modules/
+
+# Ignore lock files
+package-lock.json
+
+# Ignore compiled test files
+*.js
+*.js.map

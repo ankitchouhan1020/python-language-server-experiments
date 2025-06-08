@@ -1,5 +1,5 @@
-import * as vscode from 'vscode';
-import * as path from 'path';
+import * as vscode from "vscode";
+import * as path from "path";
 
 export let doc: vscode.TextDocument;
 export let editor: vscode.TextEditor;
@@ -10,34 +10,34 @@ export let platformEol: string;
  * Activates the pydance extension
  */
 export async function activate(docUri: vscode.Uri) {
-    // The extension is triggered for Python files
-    const ext = vscode.extensions.getExtension('ToughType.pydance')!;
-    await ext.activate();
-    try {
-        doc = await vscode.workspace.openTextDocument(docUri);
-        editor = await vscode.window.showTextDocument(doc);
-        await sleep(2000); // Wait for language server activation
-    } catch (e) {
-        console.error(e);
-    }
+  // The extension is triggered for Python files
+  const ext = vscode.extensions.getExtension("ToughType.pydance")!;
+  await ext.activate();
+  try {
+    doc = await vscode.workspace.openTextDocument(docUri);
+    editor = await vscode.window.showTextDocument(doc);
+    await sleep(2000); // Wait for language server activation
+  } catch (e) {
+    console.error(e);
+  }
 }
 
 async function sleep(ms: number) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export const getDocPath = (p: string) => {
-    return path.resolve(__dirname, '../../../src/testFixture', p);
+  return path.resolve(__dirname, "../../../src/testFixture", p);
 };
 
 export const getDocUri = (p: string) => {
-    return vscode.Uri.file(getDocPath(p));
+  return vscode.Uri.file(getDocPath(p));
 };
 
 export async function setTestContent(content: string): Promise<boolean> {
-    const all = new vscode.Range(
-        doc.positionAt(0),
-        doc.positionAt(doc.getText().length)
-    );
-    return editor.edit(eb => eb.replace(all, content));
+  const all = new vscode.Range(
+    doc.positionAt(0),
+    doc.positionAt(doc.getText().length)
+  );
+  return editor.edit((eb) => eb.replace(all, content));
 }

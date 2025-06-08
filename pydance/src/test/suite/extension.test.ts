@@ -83,7 +83,9 @@ suite("Extension Test Suite", () => {
       }
 
       // Check if pylight binary exists
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
       const fs = require("fs");
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
       const path = require("path");
       const extensionPath =
         vscode.extensions.getExtension("ToughType.pydance")!.extensionPath;
@@ -196,7 +198,7 @@ async function testWorkspaceSymbols(
       found,
       `Expected to find symbol ${expected.name} of kind ${expected.kind}`
     );
-    
+
     // Verify the position matches
     const expectedStart = expected.location.range.start;
     const foundStart = found.location.range.start;
