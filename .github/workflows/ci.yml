@@ -139,21 +139,17 @@ jobs:
           ./pylight/target
         key: ${{ runner.os }}-cargo-cross-${{ hashFiles('**/Cargo.lock') }}
     
-    - name: Install Zig
-      uses: goto-bus-stop/setup-zig@v2
-      with:
-        version: 0.11.0
-    
-    - name: Install cargo-zigbuild for cross-compilation
+    - name: Install cross for cross-compilation
       run: |
-        # Install cargo-zigbuild which handles cross-compilation to macOS
-        cargo install cargo-zigbuild
+        # Install cross which handles cross-compilation in Docker containers
+        cargo install cross --git https://github.com/cross-rs/cross
         
     - name: Build pylight binary for Apple Silicon
       working-directory: ./pylight
       run: |
-        # Build for aarch64-apple-darwin (Apple Silicon) using zigbuild
-        cargo zigbuild --release --target aarch64-apple-darwin --bin symbol_search_lsp
+        # Build for aarch64-apple-darwin (Apple Silicon) using cross
+        # This handles the C dependencies (tree-sitter) automatically
+        cross build --release --target aarch64-apple-darwin --bin symbol_search_lsp
     
     - name: Copy pylight binary to pydance
       run: |
