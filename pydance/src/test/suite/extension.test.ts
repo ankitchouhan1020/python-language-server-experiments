@@ -16,6 +16,10 @@ suite("Extension Test Suite", () => {
     let disposables: vscode.Disposable[] = [];
 
     setup(() => {
+      // Skip mock tests in integration test mode since the real language server will interfere
+      if (process.env.INTEGRATION_TEST === "true") {
+        return;
+      }
       // Register mock providers before each test
       disposables = registerMockProviders();
     });
@@ -25,7 +29,12 @@ suite("Extension Test Suite", () => {
       disposables.forEach((d) => d.dispose());
     });
 
-    test("Should provide workspace symbols with mock provider", async () => {
+    test("Should provide workspace symbols with mock provider", async function () {
+      // Skip if running in integration test mode
+      if (process.env.INTEGRATION_TEST === "true") {
+        console.log("Skipping mock test in integration test mode");
+        this.skip();
+      }
       // Test searching for "test" - should return all symbols containing "test"
       const testSymbols = await vscode.commands.executeCommand<
         vscode.SymbolInformation[]
@@ -45,7 +54,12 @@ suite("Extension Test Suite", () => {
       assert.strictEqual(methodSymbol.containerName, "TestClass");
     });
 
-    test("Should filter symbols based on query", async () => {
+    test("Should filter symbols based on query", async function () {
+      // Skip if running in integration test mode
+      if (process.env.INTEGRATION_TEST === "true") {
+        console.log("Skipping mock test in integration test mode");
+        this.skip();
+      }
       // Test searching for "function"
       const functionSymbols = await vscode.commands.executeCommand<
         vscode.SymbolInformation[]
