@@ -195,7 +195,7 @@ jobs:
         
         # Install VS Code CLI if not on macOS (macOS has it pre-installed)
         if [[ "${{ runner.os }}" == "Linux" ]]; then
-          wget -q https://code.visualstudio.com/sha/download?build=stable&os=cli-alpine-x64 -O vscode-cli.tar.gz
+          wget -q "https://code.visualstudio.com/sha/download?build=stable&os=cli-alpine-x64" -O vscode-cli.tar.gz
           tar -xzf vscode-cli.tar.gz
           chmod +x code
           export PATH=$PWD:$PATH
