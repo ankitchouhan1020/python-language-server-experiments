@@ -123,11 +123,12 @@ jobs:
       working-directory: ./pydance
       run: npm ci
     
-    - name: Setup Rust
+    - name: Setup Rust with cross-compilation support
       uses: actions-rs/toolchain@v1
       with:
         toolchain: stable
         override: true
+        target: aarch64-apple-darwin
     
     - name: Cache Rust dependencies
       uses: actions/cache@v3
@@ -136,14 +137,25 @@ jobs:
           ~/.cargo/registry
           ~/.cargo/git
           ./pylight/target
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        key: ${{ runner.os }}-cargo-cross-${{ hashFiles('**/Cargo.lock') }}
     
-    - name: Build pylight binary
+    - name: Install cargo-zigbuild for cross-compilation
+      run: |
+        # Install cargo-zigbuild which handles cross-compilation to macOS
+        cargo install cargo-zigbuild
+        
+    - name: Build pylight binary for Apple Silicon
       working-directory: ./pylight
-      run: cargo build --release --bin symbol_search_lsp
+      run: |
+        # Build for aarch64-apple-darwin (Apple Silicon) using zigbuild
+        cargo zigbuild --release --target aarch64-apple-darwin --bin symbol_search_lsp
     
     - name: Copy pylight binary to pydance
-      run: cp ./pylight/target/release/symbol_search_lsp ./pydance/pylight
+      run: |
+        # Copy the Apple Silicon binary
+        cp ./pylight/target/aarch64-apple-darwin/release/symbol_search_lsp ./pydance/pylight
+        # Make it executable
+        chmod +x ./pydance/pylight
     
     - name: Compile TypeScript
       working-directory: ./pydance
