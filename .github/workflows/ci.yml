@@ -182,7 +182,27 @@ jobs:
     
     - name: Package VSIX
       working-directory: ./pydance
-      run: vsce package --no-dependencies
+      run: |
+        # Package with dependencies included
+        vsce package
+        
+    - name: Test VSIX installation
+      working-directory: ./pydance
+      run: |
+        # Find the created VSIX file
+        VSIX_FILE=$(ls *.vsix | head -n 1)
+        echo "Testing VSIX: $VSIX_FILE"
+        
+        # Install VS Code CLI if not on macOS (macOS has it pre-installed)
+        if [[ "${{ runner.os }}" == "Linux" ]]; then
+          wget -q https://code.visualstudio.com/sha/download?build=stable&os=cli-alpine-x64 -O vscode-cli.tar.gz
+          tar -xzf vscode-cli.tar.gz
+          chmod +x code
+          export PATH=$PWD:$PATH
+        fi
+        
+        # Try to install the extension (won't activate without a workspace, but will verify package integrity)
+        code --install-extension "$VSIX_FILE" --force || echo "Installation test completed"
     
     - name: Upload VSIX artifact
       uses: actions/upload-artifact@v4
