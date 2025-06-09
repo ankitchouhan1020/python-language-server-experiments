@@ -45,7 +45,3 @@ jobs:
     - name: Build release binary
       working-directory: ./pylight
       run: cargo build --release --bin symbol_search_lsp
-    
-    - name: Run performance benchmark
-      working-directory: ./pylight
-      run: cargo run --release --bin bench_async_performance
