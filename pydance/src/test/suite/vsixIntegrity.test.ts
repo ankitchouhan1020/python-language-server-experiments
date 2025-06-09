@@ -38,10 +38,15 @@ suite("VSIX Integrity Test Suite", () => {
     );
   });
   
-  test("Can load extension module", () => {
+  test("Can load extension module", async () => {
     // This will throw if dependencies are missing
-    const extensionModule = require("../../extension");
-    assert.ok(extensionModule.activate, "Extension should export activate function");
-    assert.ok(extensionModule.deactivate, "Extension should export deactivate function");
+    try {
+      // Use dynamic import to avoid linter error
+      const extensionModule = await import("../../extension");
+      assert.ok(extensionModule.activate, "Extension should export activate function");
+      assert.ok(extensionModule.deactivate, "Extension should export deactivate function");
+    } catch (error) {
+      assert.fail(`Failed to load extension module: ${error}`);
+    }
   });
 });
