@@ -37,7 +37,13 @@
         "vscode:prepublish": "npm run compile",
         "compile": "tsc -p ./",
         "watch": "tsc -watch -p ./",
-        "pretest": "npm run compile"
+        "pretest": "npm run compile",
+        "test": "node ./out/test/runTest.js",
+        "test:integration": "npm run compile && node ./out/test/runIntegrationTest.js",
+        "lint": "eslint src --ext ts",
+        "lint:fix": "eslint src --ext ts --fix",
+        "format": "prettier --write \"src/**/*.ts\"",
+        "format:check": "prettier --check \"src/**/*.ts\""
     },
     "dependencies": {
         "vscode-languageclient": "^9.0.1"
@@ -45,6 +51,15 @@
     "devDependencies": {
         "@types/node": "^20.0.0",
         "@types/vscode": "^1.85.0",
+        "@types/mocha": "^10.0.6",
+        "@types/glob": "^8.1.0",
+        "@typescript-eslint/eslint-plugin": "^6.0.0",
+        "@typescript-eslint/parser": "^6.0.0",
+        "@vscode/test-electron": "^2.3.9",
+        "eslint": "^8.0.0",
+        "glob": "^8.1.0",
+        "mocha": "^10.2.0",
+        "prettier": "^3.0.0",
         "typescript": "^5.3.0"
     },
     "keywords": [],
