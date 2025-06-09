@@ -1,0 +1,164 @@
+name: Build VSIX Package
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-vsix:
+    runs-on: ubuntu-latest
+    needs: [pylight-test, pydance-test]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: pydance/package-lock.json
+    
+    - name: Install dependencies
+      working-directory: ./pydance
+      run: npm ci
+    
+    - name: Setup Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+    
+    - name: Cache Rust dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          ./pylight/target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    
+    - name: Build pylight binary
+      working-directory: ./pylight
+      run: cargo build --release --bin symbol_search_lsp
+    
+    - name: Copy pylight binary to pydance
+      run: cp ./pylight/target/release/symbol_search_lsp ./pydance/pylight
+    
+    - name: Compile TypeScript
+      working-directory: ./pydance
+      run: npm run compile
+    
+    - name: Install vsce
+      run: npm install -g @vscode/vsce
+    
+    - name: Package VSIX
+      working-directory: ./pydance
+      run: vsce package --no-dependencies
+    
+    - name: Upload VSIX artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: pydance-vsix
+        path: ./pydance/*.vsix
+        retention-days: 30
+
+  pylight-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+        components: rustfmt, clippy
+    
+    - name: Cache Rust dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          ./pylight/target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    
+    - name: Check formatting
+      working-directory: ./pylight
+      run: cargo fmt -- --check
+    
+    - name: Run clippy
+      working-directory: ./pylight
+      run: cargo clippy -- -D warnings
+    
+    - name: Run tests
+      working-directory: ./pylight
+      run: cargo test
+    
+    - name: Build release binary
+      working-directory: ./pylight
+      run: cargo build --release --bin symbol_search_lsp
+
+  pydance-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: pydance/package-lock.json
+    
+    - name: Install dependencies
+      working-directory: ./pydance
+      run: npm ci
+    
+    - name: Run linter
+      working-directory: ./pydance
+      run: npm run lint
+    
+    - name: Check formatting
+      working-directory: ./pydance
+      run: npm run format:check
+    
+    - name: Compile TypeScript
+      working-directory: ./pydance
+      run: npm run compile
+    
+    - name: Setup Rust for pylight binary
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+    
+    - name: Cache Rust dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          ./pylight/target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    
+    - name: Build pylight binary
+      working-directory: ./pylight
+      run: cargo build --release --bin symbol_search_lsp
+    
+    - name: Copy pylight binary to pydance
+      run: cp ./pylight/target/release/symbol_search_lsp ./pydance/pylight
+    
+    - name: Run unit tests
+      working-directory: ./pydance
+      run: xvfb-run -a npm test
+    
+    - name: Run integration tests
+      working-directory: ./pydance
+      run: xvfb-run -a npm run test:integration
