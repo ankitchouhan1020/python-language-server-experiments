@@ -1,5 +1,18 @@
-pub mod files;
-pub mod path_trie;
-pub mod python;
+//! Pylight - A high-performance Python symbol search language server
+//!
+//! This crate provides fast workspace-wide symbol search capabilities for Python code
+//! using tree-sitter for parsing and fuzzy matching for search.
+
+pub mod error;
+pub mod index;
+pub mod lsp;
+pub mod parser;
 pub mod search;
 pub mod symbols;
+
+pub use error::{Error, Result};
+pub use index::SymbolIndex;
+pub use lsp::LspServer;
+pub use parser::PythonParser;
+pub use search::SearchEngine;
+pub use symbols::{Symbol, SymbolKind};

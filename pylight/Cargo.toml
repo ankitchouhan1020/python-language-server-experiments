@@ -1,7 +1,11 @@
 [package]
-name = "symbol-experiments"
-version = "0.1.0"
+name = "pylight"
+version = "0.2.0"
 edition = "2021"
+
+[[bin]]
+name = "pylight"
+path = "src/bin/pylight.rs"
 
 [dependencies]
 walkdir = "2.5.0"
@@ -31,3 +35,13 @@ radix_trie = "0.2.1"
 
 [dev-dependencies]
 tempfile = "3.5.0"
+criterion = "0.5"
+pretty_assertions = "1.4"
+
+[[bench]]
+name = "symbol_extraction"
+harness = false
+
+[[bench]]
+name = "search"
+harness = false
