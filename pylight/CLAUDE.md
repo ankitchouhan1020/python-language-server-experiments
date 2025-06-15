@@ -21,8 +21,11 @@ cargo test
 # Format code (required before committing)
 cargo fmt
 
-# Run linter
+# Run linter (required before committing)
 cargo clippy
+
+# Important: Always run these three commands after making changes
+cargo fmt && cargo clippy && cargo test
 ```
 
 ### TypeScript Development (pydance)
