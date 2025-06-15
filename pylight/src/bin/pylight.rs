@@ -30,6 +30,27 @@ fn main() -> Result<()> {
         .with_ansi(false)
         .init();
 
+    // Log build information
+    tracing::info!(
+        "Starting pylight v{} (built: {}, commit: {})",
+        env!("CARGO_PKG_VERSION"),
+        env!("BUILD_TIMESTAMP"),
+        env!("GIT_COMMIT_HASH")
+    );
+
+    // Configure rayon to use all but one CPU (leave one for system tasks)
+    let num_cpus = num_cpus::get();
+    let num_threads = (num_cpus - 1).max(1); // Use at least 1 thread
+    tracing::info!(
+        "Detected {} CPUs, configuring rayon thread pool with {} threads",
+        num_cpus,
+        num_threads
+    );
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(num_threads)
+        .build_global()
+        .unwrap();
+
     let args = Args::parse();
 
     if args.standalone {
@@ -44,52 +65,25 @@ fn main() -> Result<()> {
 }
 
 fn run_standalone(directory: Option<std::path::PathBuf>, query: Option<String>) -> Result<()> {
-    use pylight::{PythonParser, SearchEngine, SymbolIndex};
-    use walkdir::WalkDir;
+    use pylight::{SearchEngine, SymbolIndex};
+    use std::sync::Arc;
 
     let dir = directory.unwrap_or_else(|| ".".into());
     tracing::info!("Running in standalone mode");
     tracing::info!("Indexing directory: {}", dir.display());
 
-    let index = SymbolIndex::new();
-    let mut parser = PythonParser::new()?;
-    let mut file_count = 0;
-    let mut symbol_count = 0;
-
-    for entry in WalkDir::new(&dir)
-        .follow_links(false)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().is_some_and(|ext| ext == "py"))
-    {
-        let path = entry.path();
-        match std::fs::read_to_string(path) {
-            Ok(content) => match parser.parse_file(path, &content) {
-                Ok(symbols) => {
-                    symbol_count += symbols.len();
-                    index.add_file(path.to_path_buf(), symbols)?;
-                    file_count += 1;
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to parse {}: {}", path.display(), e);
-                }
-            },
-            Err(e) => {
-                tracing::warn!("Failed to read {}: {}", path.display(), e);
-            }
-        }
-    }
-
-    println!("Indexed {} files with {} symbols", file_count, symbol_count);
+    // Create index and use the parallel index_workspace method
+    let index = Arc::new(SymbolIndex::new());
+    index.clone().index_workspace(&dir)?;
 
     if let Some(query) = query {
         let search_engine = SearchEngine::new();
         let all_symbols = index.get_all_symbols();
         let results = search_engine.search(&query, &all_symbols);
 
-        println!("\nSearch results for '{}':", query);
+        tracing::info!("Search results for '{}':", query);
         for (i, result) in results.iter().take(20).enumerate() {
-            println!(
+            tracing::info!(
                 "{:2}. {} ({}:{})",
                 i + 1,
                 result.symbol.name,

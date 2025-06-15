@@ -31,7 +31,7 @@ This document compares the features of the original pylight implementation with 
 - [x] Error handling and response formatting
 
 ### Performance Features
-- [x] Parallel file processing (via walkdir)
+- [x] Parallel file processing (via rayon - restored in rewrite)
 - [x] Efficient symbol storage
 - [x] Memory-efficient path handling
 
