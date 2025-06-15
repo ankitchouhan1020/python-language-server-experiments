@@ -125,7 +125,7 @@ suite("Extension Test Suite", () => {
         ),
         new vscode.SymbolInformation(
           "test_method",
-          vscode.SymbolKind.Function, // The server returns Function for methods
+          vscode.SymbolKind.Method, // The server correctly returns Method for methods
           "TestClass",
           new vscode.Location(
             docUri,
