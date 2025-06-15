@@ -1,12 +1,11 @@
 //! Core LSP server implementation
 
-use crate::{Error, PythonParser, Result, SearchEngine, SymbolIndex};
+use crate::{Error, Result, SearchEngine, SymbolIndex};
 use lsp_server::{Connection, Message, Response};
 use lsp_types::{InitializeParams, ServerCapabilities, WorkspaceSymbolParams};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
-use walkdir::WalkDir;
 
 pub struct LspServer {
     connection: Connection,
@@ -51,7 +50,7 @@ impl LspServer {
                         let index = self.index.clone();
                         let root = path.clone();
                         thread::spawn(move || {
-                            if let Err(e) = index_workspace(&root, index) {
+                            if let Err(e) = index.index_workspace(&root) {
                                 tracing::error!("Failed to index workspace: {}", e);
                             }
                         });
@@ -130,39 +129,4 @@ impl LspServer {
 
         Ok(())
     }
-}
-
-fn index_workspace(root: &PathBuf, index: Arc<SymbolIndex>) -> Result<()> {
-    tracing::info!("Starting workspace indexing for: {}", root.display());
-
-    let mut parser = PythonParser::new()?;
-    let mut file_count = 0;
-    let mut symbol_count = 0;
-
-    for entry in WalkDir::new(root)
-        .follow_links(false)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().is_some_and(|ext| ext == "py"))
-    {
-        let path = entry.path();
-        match std::fs::read_to_string(path) {
-            Ok(content) => match parser.parse_file(path, &content) {
-                Ok(symbols) => {
-                    symbol_count += symbols.len();
-                    index.add_file(path.to_path_buf(), symbols)?;
-                    file_count += 1;
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to parse {}: {}", path.display(), e);
-                }
-            },
-            Err(e) => {
-                tracing::warn!("Failed to read {}: {}", path.display(), e);
-            }
-        }
-    }
-
-    tracing::info!("Indexed {} files with {} symbols", file_count, symbol_count);
-    Ok(())
 }
