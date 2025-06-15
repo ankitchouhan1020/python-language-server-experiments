@@ -1,6 +1,6 @@
 //! Symbol search functionality
 
-use crate::Symbol;
+use crate::symbols::Symbol;
 use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;
 
@@ -53,7 +53,7 @@ impl Default for SearchEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::SymbolKind;
+    use crate::symbols::SymbolKind;
     use std::path::PathBuf;
 
     #[test]
