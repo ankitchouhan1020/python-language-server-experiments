@@ -24,7 +24,13 @@ pub struct Symbol {
 }
 
 impl Symbol {
-    pub fn new(name: String, kind: SymbolKind, file_path: PathBuf, line: usize, column: usize) -> Self {
+    pub fn new(
+        name: String,
+        kind: SymbolKind,
+        file_path: PathBuf,
+        line: usize,
+        column: usize,
+    ) -> Self {
         Self {
             name,
             kind,

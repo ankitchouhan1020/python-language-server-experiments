@@ -1,8 +1,8 @@
 //! Core LSP server implementation
 
-use crate::{Error, Result, SymbolIndex, SearchEngine, PythonParser};
+use crate::{Error, PythonParser, Result, SearchEngine, SymbolIndex};
 use lsp_server::{Connection, Message, Response};
-use lsp_types::{ServerCapabilities, WorkspaceSymbolParams, InitializeParams};
+use lsp_types::{InitializeParams, ServerCapabilities, WorkspaceSymbolParams};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
@@ -18,7 +18,7 @@ pub struct LspServer {
 impl LspServer {
     pub fn new() -> Result<Self> {
         let (connection, _io_threads) = Connection::stdio();
-        
+
         Ok(Self {
             connection,
             index: Arc::new(SymbolIndex::new()),
@@ -34,7 +34,8 @@ impl LspServer {
             ..ServerCapabilities::default()
         };
 
-        let initialization_params = self.connection
+        let initialization_params = self
+            .connection
             .initialize(serde_json::to_value(server_capabilities).unwrap())
             .map_err(|e| Error::Lsp(format!("Failed to initialize: {}", e)))?;
 
@@ -45,7 +46,7 @@ impl LspServer {
                 if let Ok(url) = url::Url::parse(root_uri.as_str()) {
                     if let Ok(path) = url.to_file_path() {
                         self.workspace_root = Some(path.clone());
-                    
+
                         // Start background indexing
                         let index = self.index.clone();
                         let root = path.clone();
@@ -66,7 +67,7 @@ impl LspServer {
                     if self.connection.handle_shutdown(&req).unwrap() {
                         return Ok(());
                     }
-                    
+
                     // Handle workspace/symbol requests
                     if req.method == "workspace/symbol" {
                         match serde_json::from_value::<WorkspaceSymbolParams>(req.params) {
@@ -82,7 +83,10 @@ impl LspServer {
                                             result: Some(serde_json::to_value(symbols).unwrap()),
                                             error: None,
                                         };
-                                        self.connection.sender.send(Message::Response(resp)).unwrap();
+                                        self.connection
+                                            .sender
+                                            .send(Message::Response(resp))
+                                            .unwrap();
                                     }
                                     Err(e) => {
                                         let resp = Response {
@@ -94,7 +98,10 @@ impl LspServer {
                                                 data: None,
                                             }),
                                         };
-                                        self.connection.sender.send(Message::Response(resp)).unwrap();
+                                        self.connection
+                                            .sender
+                                            .send(Message::Response(resp))
+                                            .unwrap();
                                     }
                                 }
                             }
@@ -108,7 +115,10 @@ impl LspServer {
                                         data: None,
                                     }),
                                 };
-                                self.connection.sender.send(Message::Response(resp)).unwrap();
+                                self.connection
+                                    .sender
+                                    .send(Message::Response(resp))
+                                    .unwrap();
                             }
                         }
                     }
@@ -124,37 +134,35 @@ impl LspServer {
 
 fn index_workspace(root: &PathBuf, index: Arc<SymbolIndex>) -> Result<()> {
     tracing::info!("Starting workspace indexing for: {}", root.display());
-    
+
     let mut parser = PythonParser::new()?;
     let mut file_count = 0;
     let mut symbol_count = 0;
-    
+
     for entry in WalkDir::new(root)
         .follow_links(false)
         .into_iter()
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map_or(false, |ext| ext == "py"))
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "py"))
     {
         let path = entry.path();
         match std::fs::read_to_string(path) {
-            Ok(content) => {
-                match parser.parse_file(path, &content) {
-                    Ok(symbols) => {
-                        symbol_count += symbols.len();
-                        index.add_file(path.to_path_buf(), symbols)?;
-                        file_count += 1;
-                    }
-                    Err(e) => {
-                        tracing::warn!("Failed to parse {}: {}", path.display(), e);
-                    }
+            Ok(content) => match parser.parse_file(path, &content) {
+                Ok(symbols) => {
+                    symbol_count += symbols.len();
+                    index.add_file(path.to_path_buf(), symbols)?;
+                    file_count += 1;
                 }
-            }
+                Err(e) => {
+                    tracing::warn!("Failed to parse {}: {}", path.display(), e);
+                }
+            },
             Err(e) => {
                 tracing::warn!("Failed to read {}: {}", path.display(), e);
             }
         }
     }
-    
+
     tracing::info!("Indexed {} files with {} symbols", file_count, symbol_count);
     Ok(())
 }

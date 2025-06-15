@@ -55,7 +55,7 @@ enum ContextKind {
     Function,
 }
 
-impl<'a> SymbolExtractor<'a> {
+impl SymbolExtractor<'_> {
     fn visit_node(&mut self, node: Node) -> Result<()> {
         match node.kind() {
             "function_definition" | "async_function_definition" => {
@@ -78,11 +78,11 @@ impl<'a> SymbolExtractor<'a> {
         Ok(())
     }
 
-    fn extract_function(&mut self, node: Node, is_async: bool) -> Result<()> {
+    fn extract_function(&mut self, node: Node, _is_async: bool) -> Result<()> {
         let name_node = node
             .child_by_field_name("name")
             .ok_or_else(|| Error::Parse("Function without name".to_string()))?;
-        
+
         let name = self.get_node_text(name_node);
         let line = name_node.start_position().row + 1;
         let column = name_node.start_position().column;
@@ -96,10 +96,11 @@ impl<'a> SymbolExtractor<'a> {
         };
 
         let mut symbol = Symbol::new(name.clone(), kind, self.path.clone(), line, column);
-        
+
         // Set container name if we're inside another context
         if !self.context_stack.is_empty() {
-            let container = self.context_stack
+            let container = self
+                .context_stack
                 .iter()
                 .map(|ctx| ctx.name.as_str())
                 .collect::<Vec<_>>()
@@ -108,7 +109,8 @@ impl<'a> SymbolExtractor<'a> {
         }
 
         // Set module path
-        let module = self.path
+        let module = self
+            .path
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("")
@@ -136,23 +138,28 @@ impl<'a> SymbolExtractor<'a> {
         let name_node = node
             .child_by_field_name("name")
             .ok_or_else(|| Error::Parse("Class without name".to_string()))?;
-        
+
         let name = self.get_node_text(name_node);
         let line = name_node.start_position().row + 1;
         let column = name_node.start_position().column;
 
         // Determine if this is a nested class
-        let kind = if self.context_stack.iter().any(|ctx| ctx.kind == ContextKind::Class) {
+        let kind = if self
+            .context_stack
+            .iter()
+            .any(|ctx| ctx.kind == ContextKind::Class)
+        {
             SymbolKind::NestedClass
         } else {
             SymbolKind::Class
         };
 
         let mut symbol = Symbol::new(name.clone(), kind, self.path.clone(), line, column);
-        
+
         // Set container name if we're inside another context
         if !self.context_stack.is_empty() {
-            let container = self.context_stack
+            let container = self
+                .context_stack
                 .iter()
                 .map(|ctx| ctx.name.as_str())
                 .collect::<Vec<_>>()
@@ -161,7 +168,8 @@ impl<'a> SymbolExtractor<'a> {
         }
 
         // Set module path
-        let module = self.path
+        let module = self
+            .path
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("")

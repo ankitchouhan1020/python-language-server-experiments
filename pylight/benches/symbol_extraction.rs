@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use pylight::PythonParser;
 use std::path::Path;
 
@@ -62,13 +62,12 @@ async def async_function():
 
 fn bench_simple_parse(c: &mut Criterion) {
     let mut parser = PythonParser::new().unwrap();
-    
+
     c.bench_function("parse_simple_functions", |b| {
         b.iter(|| {
-            let symbols = parser.parse_file(
-                Path::new("test.py"),
-                black_box(SIMPLE_FUNCTION)
-            ).unwrap();
+            let symbols = parser
+                .parse_file(Path::new("test.py"), black_box(SIMPLE_FUNCTION))
+                .unwrap();
             black_box(symbols);
         });
     });
@@ -76,13 +75,12 @@ fn bench_simple_parse(c: &mut Criterion) {
 
 fn bench_complex_parse(c: &mut Criterion) {
     let mut parser = PythonParser::new().unwrap();
-    
+
     c.bench_function("parse_complex_file", |b| {
         b.iter(|| {
-            let symbols = parser.parse_file(
-                Path::new("test.py"),
-                black_box(COMPLEX_FILE)
-            ).unwrap();
+            let symbols = parser
+                .parse_file(Path::new("test.py"), black_box(COMPLEX_FILE))
+                .unwrap();
             black_box(symbols);
         });
     });
@@ -91,32 +89,27 @@ fn bench_complex_parse(c: &mut Criterion) {
 fn bench_file_sizes(c: &mut Criterion) {
     let mut group = c.benchmark_group("parse_by_size");
     let mut parser = PythonParser::new().unwrap();
-    
+
     // Generate files of different sizes
     let sizes = vec![100, 500, 1000, 5000];
-    
+
     for size in sizes {
         let content = generate_python_file(size);
-        group.bench_with_input(
-            BenchmarkId::from_parameter(size),
-            &content,
-            |b, content| {
-                b.iter(|| {
-                    let symbols = parser.parse_file(
-                        Path::new("test.py"),
-                        black_box(content)
-                    ).unwrap();
-                    black_box(symbols);
-                });
-            }
-        );
+        group.bench_with_input(BenchmarkId::from_parameter(size), &content, |b, content| {
+            b.iter(|| {
+                let symbols = parser
+                    .parse_file(Path::new("test.py"), black_box(content))
+                    .unwrap();
+                black_box(symbols);
+            });
+        });
     }
     group.finish();
 }
 
 fn generate_python_file(num_functions: usize) -> String {
     let mut content = String::new();
-    
+
     for i in 0..num_functions {
         content.push_str(&format!(
             r#"
@@ -127,7 +120,7 @@ def function_{}(x, y):
 "#,
             i, i, i
         ));
-        
+
         if i % 10 == 0 {
             content.push_str(&format!(
                 r#"
@@ -140,9 +133,14 @@ class Class_{}:
             ));
         }
     }
-    
+
     content
 }
 
-criterion_group!(benches, bench_simple_parse, bench_complex_parse, bench_file_sizes);
+criterion_group!(
+    benches,
+    bench_simple_parse,
+    bench_complex_parse,
+    bench_file_sizes
+);
 criterion_main!(benches);

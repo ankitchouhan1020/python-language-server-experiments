@@ -39,8 +39,14 @@ impl SearchEngine {
 
         // Sort by score descending
         results.sort_by(|a, b| b.score.cmp(&a.score));
-        
+
         results
+    }
+}
+
+impl Default for SearchEngine {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -61,10 +67,22 @@ mod tests {
     fn test_search_basic() {
         let engine = SearchEngine::new();
         let symbols = vec![
-            Symbol::new("test_function".to_string(), SymbolKind::Function, PathBuf::from("test.py"), 1, 0),
-            Symbol::new("another_function".to_string(), SymbolKind::Function, PathBuf::from("test.py"), 2, 0),
+            Symbol::new(
+                "test_function".to_string(),
+                SymbolKind::Function,
+                PathBuf::from("test.py"),
+                1,
+                0,
+            ),
+            Symbol::new(
+                "another_function".to_string(),
+                SymbolKind::Function,
+                PathBuf::from("test.py"),
+                2,
+                0,
+            ),
         ];
-        
+
         let results = engine.search("test", &symbols);
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].symbol.name, "test_function");

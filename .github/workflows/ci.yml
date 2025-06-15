@@ -44,7 +44,7 @@ jobs:
     
     - name: Build release binary
       working-directory: ./pylight
-      run: cargo build --release --bin symbol_search_lsp
+      run: cargo build --release --bin pylight
 
   pydance-test:
     runs-on: ubuntu-latest
@@ -92,10 +92,10 @@ jobs:
     
     - name: Build pylight binary
       working-directory: ./pylight
-      run: cargo build --release --bin symbol_search_lsp
+      run: cargo build --release --bin pylight
     
     - name: Copy pylight binary to pydance
-      run: cp ./pylight/target/release/symbol_search_lsp ./pydance/pylight
+      run: cp ./pylight/target/release/pylight ./pydance/pylight
     
     - name: Run unit tests (Linux)
       if: runner.os == 'Linux'
@@ -164,12 +164,12 @@ jobs:
       working-directory: ./pylight
       run: |
         # Build for the target platform
-        cargo build --release --target ${{ matrix.target }} --bin symbol_search_lsp
+        cargo build --release --target ${{ matrix.target }} --bin pylight
     
     - name: Copy pylight binary to pydance
       run: |
         # Copy the platform-specific binary
-        cp ./pylight/target/${{ matrix.target }}/release/symbol_search_lsp ./pydance/pylight
+        cp ./pylight/target/${{ matrix.target }}/release/pylight ./pydance/pylight
         # Make it executable
         chmod +x ./pydance/pylight
     

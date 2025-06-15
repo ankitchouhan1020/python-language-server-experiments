@@ -21,7 +21,7 @@ mod tests {
         let mut parser = PythonParser::new().unwrap();
         let code = "def hello():\n    pass";
         let symbols = parser.parse_file(Path::new("test.py"), code).unwrap();
-        
+
         assert_eq!(symbols.len(), 1);
         assert_eq!(symbols[0].name, "hello");
         assert_eq!(symbols[0].kind, SymbolKind::Function);
@@ -33,7 +33,7 @@ mod tests {
         let mut parser = PythonParser::new().unwrap();
         let code = "class MyClass:\n    pass";
         let symbols = parser.parse_file(Path::new("test.py"), code).unwrap();
-        
+
         assert_eq!(symbols.len(), 1);
         assert_eq!(symbols[0].name, "MyClass");
         assert_eq!(symbols[0].kind, SymbolKind::Class);
@@ -49,13 +49,13 @@ class MyClass:
         pass
 "#;
         let symbols = parser.parse_file(Path::new("test.py"), code).unwrap();
-        
+
         assert_eq!(symbols.len(), 2);
-        
+
         let class_symbol = &symbols[0];
         assert_eq!(class_symbol.name, "MyClass");
         assert_eq!(class_symbol.kind, SymbolKind::Class);
-        
+
         let method_symbol = &symbols[1];
         assert_eq!(method_symbol.name, "my_method");
         assert_eq!(method_symbol.kind, SymbolKind::Method);
@@ -71,13 +71,13 @@ def outer():
         pass
 "#;
         let symbols = parser.parse_file(Path::new("test.py"), code).unwrap();
-        
+
         assert_eq!(symbols.len(), 2);
-        
+
         let outer_symbol = &symbols[0];
         assert_eq!(outer_symbol.name, "outer");
         assert_eq!(outer_symbol.kind, SymbolKind::Function);
-        
+
         let inner_symbol = &symbols[1];
         assert_eq!(inner_symbol.name, "inner");
         assert_eq!(inner_symbol.kind, SymbolKind::NestedFunction);
@@ -93,7 +93,7 @@ def decorated():
     pass
 "#;
         let symbols = parser.parse_file(Path::new("test.py"), code).unwrap();
-        
+
         assert_eq!(symbols.len(), 1);
         assert_eq!(symbols[0].name, "decorated");
         assert_eq!(symbols[0].kind, SymbolKind::Function);
@@ -104,7 +104,7 @@ def decorated():
         let mut parser = PythonParser::new().unwrap();
         let code = "async def async_func():\n    pass";
         let symbols = parser.parse_file(Path::new("test.py"), code).unwrap();
-        
+
         assert_eq!(symbols.len(), 1);
         assert_eq!(symbols[0].name, "async_func");
         assert_eq!(symbols[0].kind, SymbolKind::Function);
@@ -120,7 +120,9 @@ class MyClass:
         return self._value
 "#;
         let symbols = parser.parse_file(Path::new("test.py"), code).unwrap();
-        
-        assert!(symbols.iter().any(|s| s.name == "value" && s.kind == SymbolKind::Method));
+
+        assert!(symbols
+            .iter()
+            .any(|s| s.name == "value" && s.kind == SymbolKind::Method));
     }
 }

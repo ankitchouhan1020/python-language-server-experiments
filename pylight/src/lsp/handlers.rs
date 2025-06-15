@@ -1,7 +1,10 @@
 //! LSP request handlers
 
-use crate::{Result, SymbolIndex, SearchEngine};
-use lsp_types::{WorkspaceSymbolParams, SymbolInformation, Location, Range, Position, SymbolKind as LspSymbolKind};
+use crate::{Result, SearchEngine, SymbolIndex};
+use lsp_types::{
+    Location, Position, Range, SymbolInformation, SymbolKind as LspSymbolKind,
+    WorkspaceSymbolParams,
+};
 use std::sync::Arc;
 
 pub fn handle_workspace_symbol(
@@ -27,9 +30,13 @@ pub fn handle_workspace_symbol(
             Some(SymbolInformation {
                 name: symbol.name.clone(),
                 kind: match symbol.kind {
-                    crate::SymbolKind::Function | crate::SymbolKind::NestedFunction => LspSymbolKind::FUNCTION,
+                    crate::SymbolKind::Function | crate::SymbolKind::NestedFunction => {
+                        LspSymbolKind::FUNCTION
+                    }
                     crate::SymbolKind::Method => LspSymbolKind::METHOD,
-                    crate::SymbolKind::Class | crate::SymbolKind::NestedClass => LspSymbolKind::CLASS,
+                    crate::SymbolKind::Class | crate::SymbolKind::NestedClass => {
+                        LspSymbolKind::CLASS
+                    }
                 },
                 tags: None,
                 location: Location {

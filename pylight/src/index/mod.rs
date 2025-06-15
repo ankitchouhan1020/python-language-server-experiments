@@ -21,26 +21,26 @@ impl SymbolIndex {
     pub fn add_file(&self, path: PathBuf, symbols: Vec<Symbol>) -> Result<()> {
         let mut file_symbols = self.symbols.write().unwrap();
         let mut all = self.all_symbols.write().unwrap();
-        
+
         // Remove old symbols for this file if any
-        if let Some(old_symbols) = file_symbols.get(&path) {
+        if let Some(_old_symbols) = file_symbols.get(&path) {
             all.retain(|s| s.file_path != path);
         }
-        
+
         // Add new symbols
         all.extend(symbols.clone());
         file_symbols.insert(path, symbols);
-        
+
         Ok(())
     }
 
     pub fn remove_file(&self, path: &Path) -> Result<()> {
         let mut file_symbols = self.symbols.write().unwrap();
         let mut all = self.all_symbols.write().unwrap();
-        
+
         file_symbols.remove(path);
         all.retain(|s| s.file_path != path);
-        
+
         Ok(())
     }
 
@@ -55,6 +55,12 @@ impl SymbolIndex {
     pub fn clear(&self) {
         self.symbols.write().unwrap().clear();
         self.all_symbols.write().unwrap().clear();
+    }
+}
+
+impl Default for SymbolIndex {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

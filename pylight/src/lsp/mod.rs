@@ -1,6 +1,6 @@
 //! LSP server implementation
 
-pub mod server;
 pub mod handlers;
+pub mod server;
 
 pub use server::LspServer;
