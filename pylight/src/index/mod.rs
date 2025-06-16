@@ -9,8 +9,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
 pub struct SymbolIndex {
-    symbols: Arc<RwLock<HashMap<PathBuf, Vec<Symbol>>>>,
-    all_symbols: Arc<RwLock<Vec<Symbol>>>,
+    symbols: Arc<RwLock<HashMap<PathBuf, Vec<Arc<Symbol>>>>>,
+    all_symbols: Arc<RwLock<Vec<Arc<Symbol>>>>,
 }
 
 impl SymbolIndex {
@@ -30,9 +30,12 @@ impl SymbolIndex {
             all.retain(|s| s.file_path != path);
         }
 
+        // Convert symbols to Arc
+        let arc_symbols: Vec<Arc<Symbol>> = symbols.into_iter().map(Arc::new).collect();
+
         // Add new symbols
-        all.extend(symbols.clone());
-        file_symbols.insert(path, symbols);
+        all.extend(arc_symbols.clone());
+        file_symbols.insert(path, arc_symbols);
 
         Ok(())
     }
@@ -47,11 +50,11 @@ impl SymbolIndex {
         Ok(())
     }
 
-    pub fn get_all_symbols(&self) -> Vec<Symbol> {
+    pub fn get_all_symbols(&self) -> Vec<Arc<Symbol>> {
         self.all_symbols.read().unwrap().clone()
     }
 
-    pub fn get_file_symbols(&self, path: &Path) -> Option<Vec<Symbol>> {
+    pub fn get_file_symbols(&self, path: &Path) -> Option<Vec<Arc<Symbol>>> {
         self.symbols.read().unwrap().get(path).cloned()
     }
 
@@ -71,9 +74,12 @@ impl SymbolIndex {
                 all.retain(|s| s.file_path != path);
             }
 
+            // Convert symbols to Arc
+            let arc_symbols: Vec<Arc<Symbol>> = symbols.into_iter().map(Arc::new).collect();
+
             // Add new symbols
-            all.extend(symbols.clone());
-            file_symbols.insert(path, symbols);
+            all.extend(arc_symbols.clone());
+            file_symbols.insert(path, arc_symbols);
         }
 
         Ok(())
