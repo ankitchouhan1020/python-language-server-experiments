@@ -23,7 +23,15 @@ impl SearchEngine {
 
     pub fn search(&self, query: &str, symbols: &[Arc<Symbol>]) -> Vec<SearchResult> {
         if query.is_empty() {
-            return vec![];
+            // Return first 100 symbols when query is empty
+            return symbols
+                .iter()
+                .take(100)
+                .map(|symbol| SearchResult {
+                    symbol: Arc::clone(symbol),
+                    score: 0,
+                })
+                .collect();
         }
 
         let mut results: Vec<SearchResult> = symbols

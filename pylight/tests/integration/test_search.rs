@@ -102,7 +102,10 @@ fn test_empty_query() {
     let symbols = create_test_symbols();
 
     let results = engine.search("", &symbols);
-    assert_eq!(results.len(), 0);
+    // Empty query now returns first 100 symbols (or all if less than 100)
+    assert_eq!(results.len(), symbols.len());
+    // All results should have score of 0
+    assert!(results.iter().all(|r| r.score == 0));
 }
 
 #[test]

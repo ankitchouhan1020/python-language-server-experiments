@@ -58,12 +58,34 @@ fn test_lsp_handler() {
 }
 
 #[test]
-fn test_empty_query_returns_empty() {
-    use pylight::SearchEngine;
+fn test_empty_query_returns_symbols() {
+    use pylight::{SearchEngine, Symbol, SymbolKind};
     use std::sync::Arc;
 
     let index = Arc::new(SymbolIndex::new());
     let search_engine = Arc::new(SearchEngine::new());
+
+    // Add test symbols
+    let symbols = vec![
+        Symbol::new(
+            "function1".to_string(),
+            SymbolKind::Function,
+            PathBuf::from("/test/file.py"),
+            10,
+            0,
+        ),
+        Symbol::new(
+            "function2".to_string(),
+            SymbolKind::Function,
+            PathBuf::from("/test/file.py"),
+            20,
+            0,
+        ),
+    ];
+
+    index
+        .add_file(PathBuf::from("/test/file.py"), symbols)
+        .unwrap();
 
     let params = lsp_types::WorkspaceSymbolParams {
         query: "".to_string(),
@@ -81,5 +103,6 @@ fn test_empty_query_returns_empty() {
         request_id,
     )
     .unwrap();
-    assert_eq!(results.len(), 0);
+    // Empty query should return symbols (up to 100)
+    assert_eq!(results.len(), 2);
 }
