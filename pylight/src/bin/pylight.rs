@@ -30,7 +30,6 @@ fn main() -> Result<()> {
         .with_ansi(false)
         .init();
 
-
     // Log build information
     tracing::info!(
         "Starting pylight v{} (built: {}, commit: {})",
