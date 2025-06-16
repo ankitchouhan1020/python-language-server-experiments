@@ -9,7 +9,7 @@ A web-based development tool for testing pylight performance and capabilities ag
    cargo run --release --bin pylight_devtools
    ```
 
-2. Open http://localhost:8080 in your browser
+2. Open http://localhost:8095 in your browser
 
 3. Enter the absolute path to a Python codebase you want to test
 
