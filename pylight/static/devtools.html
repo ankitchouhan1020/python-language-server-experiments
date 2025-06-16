@@ -132,11 +132,6 @@
             font-family: monospace;
         }
         
-        .result-score {
-            color: #999;
-            font-size: 12px;
-            margin-top: 5px;
-        }
         
         #metrics {
             margin-top: 20px;
@@ -218,7 +213,7 @@
                 
                 if (response.ok) {
                     indexedPath = path;
-                    showStatus(`Successfully indexed: ${path}`, 'success');
+                    showStatus(`Successfully triggered indexing for: ${path}`, 'success');
                     document.getElementById('searchSection').style.display = 'block';
                     document.getElementById('searchInput').focus();
                 } else {
@@ -234,12 +229,6 @@
         
         async function searchSymbols() {
             const query = document.getElementById('searchInput').value;
-            
-            if (!query) {
-                document.getElementById('results').innerHTML = '';
-                document.getElementById('metrics').innerHTML = '';
-                return;
-            }
             
             try {
                 const response = await fetch(`/search?q=${encodeURIComponent(query)}`, {
@@ -269,16 +258,33 @@
             if (results.length === 0) {
                 resultsDiv.innerHTML = '<p style="color: #666;">No results found</p>';
             } else {
-                resultsDiv.innerHTML = results.map(result => `
-                    <div class="result">
-                        <div class="result-header">
-                            <span class="result-name">${escapeHtml(result.name)}</span>
-                            <span class="result-kind">${result.kind}</span>
+                resultsDiv.innerHTML = results.map(result => {
+                    // Extract from LSP format
+                    const name = result.name || '<unnamed>';
+                    const kind = result.kind || 0;
+                    const uri = result.location?.uri || '';
+                    const line = (result.location?.range?.start?.line || 0) + 1;
+                    
+                    // Convert kind number to string
+                    const kindStr = {
+                        12: 'Function',
+                        5: 'Class',
+                        6: 'Method'
+                    }[kind] || 'Unknown';
+                    
+                    // Strip file:// prefix
+                    const file = uri.startsWith('file://') ? uri.substring(7) : uri;
+                    
+                    return `
+                        <div class="result">
+                            <div class="result-header">
+                                <span class="result-name">${escapeHtml(name)}</span>
+                                <span class="result-kind">${kindStr}</span>
+                            </div>
+                            <div class="result-location">${escapeHtml(file)}:${line}</div>
                         </div>
-                        <div class="result-location">${escapeHtml(result.file)}:${result.line}</div>
-                        <div class="result-score">Score: ${result.score.toFixed(3)}</div>
-                    </div>
-                `).join('');
+                    `;
+                }).join('');
             }
             
             metricsDiv.innerHTML = `

@@ -28,17 +28,8 @@ struct SearchRequest {
 
 #[derive(Serialize)]
 struct SearchResponse {
-    results: Vec<SymbolResult>,
+    results: Vec<Value>, // Pass through raw LSP results
     duration_ms: u128,
-}
-
-#[derive(Serialize)]
-struct SymbolResult {
-    name: String,
-    kind: String,
-    file: String,
-    line: u32,
-    score: f64,
 }
 
 type SharedPylight = Arc<Mutex<Option<PylightInstance>>>;
@@ -300,7 +291,7 @@ fn spawn_pylight(workspace_path: &str, pylight: SharedPylight) -> Result<(), Str
     Ok(())
 }
 
-fn search_symbols(query: &str, pylight: SharedPylight) -> Result<Vec<SymbolResult>, String> {
+fn search_symbols(query: &str, pylight: SharedPylight) -> Result<Vec<Value>, String> {
     debug!("search_symbols called with query: {}", query);
 
     let mut guard = pylight.lock().unwrap();
@@ -354,39 +345,13 @@ fn search_symbols(query: &str, pylight: SharedPylight) -> Result<Vec<SymbolResul
         .and_then(|r| r.as_array())
         .ok_or("Invalid response format")?;
 
-    let symbols: Vec<SymbolResult> = results
-        .iter()
-        .filter_map(|symbol| {
-            let name = symbol.get("name")?.as_str()?;
-            let kind = symbol.get("kind")?.as_i64()?;
-            let location = symbol.get("location")?;
-            let uri = location.get("uri")?.as_str()?;
-            let range = location.get("range")?;
-            let start = range.get("start")?;
-            let line = start.get("line")?.as_u64()? as u32;
-            let score = symbol.get("score").and_then(|s| s.as_f64()).unwrap_or(0.0);
+    debug!(
+        "LSP returned {} symbols, passing through as-is",
+        results.len()
+    );
 
-            let kind_str = match kind {
-                12 => "Function",
-                5 => "Class",
-                13 => "Variable",
-                6 => "Method",
-                _ => "Other",
-            };
-
-            let file = uri.strip_prefix("file://").unwrap_or(uri);
-
-            Some(SymbolResult {
-                name: name.to_string(),
-                kind: kind_str.to_string(),
-                file: file.to_string(),
-                line: line + 1,
-                score,
-            })
-        })
-        .collect();
-
-    Ok(symbols)
+    // Pass through the raw LSP results without transformation
+    Ok(results.clone())
 }
 
 fn send_request(instance: &mut PylightInstance, request: &Value) -> Result<(), String> {

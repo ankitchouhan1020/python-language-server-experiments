@@ -49,6 +49,12 @@ impl SearchEngine {
         // Sort by score descending
         results.sort_by(|a, b| b.score.cmp(&a.score));
 
+        tracing::debug!(
+            "Search for '{}' returned {} results (sorted by score)",
+            query,
+            results.len()
+        );
+
         results
     }
 }

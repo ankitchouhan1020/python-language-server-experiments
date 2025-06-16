@@ -16,10 +16,6 @@ pub fn handle_workspace_symbol(
     cancelled_requests: Arc<Mutex<HashSet<RequestId>>>,
     request_id: RequestId,
 ) -> Result<Vec<SymbolInformation>> {
-    if params.query.is_empty() {
-        return Ok(vec![]);
-    }
-
     let start = std::time::Instant::now();
     let all_symbols = index.get_all_symbols();
     let get_symbols_duration = start.elapsed();
