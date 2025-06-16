@@ -1,11 +1,12 @@
 //! Symbol indexing and storage
 
+mod files;
+
 use crate::{PythonParser, Result, Symbol};
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
-use walkdir::WalkDir;
 
 pub struct SymbolIndex {
     symbols: Arc<RwLock<HashMap<PathBuf, Vec<Symbol>>>>,
@@ -76,19 +77,6 @@ impl SymbolIndex {
         }
 
         Ok(())
-    }
-
-    /// Collect all Python files in a directory
-    pub fn collect_python_files(root: &PathBuf) -> Vec<PathBuf> {
-        WalkDir::new(root)
-            .follow_links(false)
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|e| {
-                e.file_type().is_file() && e.path().extension().is_some_and(|ext| ext == "py")
-            })
-            .map(|e| e.path().to_path_buf())
-            .collect()
     }
 
     /// Parse and index a list of Python files in parallel
@@ -164,7 +152,7 @@ impl SymbolIndex {
         tracing::info!("Starting workspace indexing for: {}", root.display());
 
         // Collect all Python files first
-        let python_files = Self::collect_python_files(root);
+        let python_files = files::collect_python_files(root);
         tracing::info!("Found {} Python files to index", python_files.len());
 
         // Log thread pool info
