@@ -3,13 +3,14 @@
 use crate::symbols::Symbol;
 use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;
+use std::sync::Arc;
 
 pub struct SearchEngine {
     matcher: SkimMatcherV2,
 }
 
 pub struct SearchResult {
-    pub symbol: Symbol,
+    pub symbol: Arc<Symbol>,
     pub score: i64,
 }
 
@@ -20,7 +21,7 @@ impl SearchEngine {
         }
     }
 
-    pub fn search(&self, query: &str, symbols: &[Symbol]) -> Vec<SearchResult> {
+    pub fn search(&self, query: &str, symbols: &[Arc<Symbol>]) -> Vec<SearchResult> {
         if query.is_empty() {
             return vec![];
         }
@@ -31,7 +32,7 @@ impl SearchEngine {
                 self.matcher
                     .fuzzy_match(&symbol.name, query)
                     .map(|score| SearchResult {
-                        symbol: symbol.clone(),
+                        symbol: Arc::clone(symbol),
                         score,
                     })
             })
@@ -67,20 +68,20 @@ mod tests {
     fn test_search_basic() {
         let engine = SearchEngine::new();
         let symbols = vec![
-            Symbol::new(
+            Arc::new(Symbol::new(
                 "test_function".to_string(),
                 SymbolKind::Function,
                 PathBuf::from("test.py"),
                 1,
                 0,
-            ),
-            Symbol::new(
+            )),
+            Arc::new(Symbol::new(
                 "another_function".to_string(),
                 SymbolKind::Function,
                 PathBuf::from("test.py"),
                 2,
                 0,
-            ),
+            )),
         ];
 
         let results = engine.search("test", &symbols);

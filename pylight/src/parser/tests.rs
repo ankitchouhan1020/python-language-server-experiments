@@ -1,5 +1,5 @@
 #[cfg(test)]
-mod tests {
+mod parser_tests {
     use crate::{PythonParser, SymbolKind};
     use std::path::Path;
 

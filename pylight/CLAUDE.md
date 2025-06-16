@@ -13,7 +13,7 @@ This is a high-performance Python workspace symbol search language server implem
 ### Rust Development (pylight)
 ```bash
 # Build the LSP server
-cargo build --release --bin symbol_search_lsp
+cargo build --release --bin pylight
 
 # Run tests
 cargo test
@@ -65,7 +65,7 @@ The project uses GitHub Actions for CI/CD. Key jobs include:
 - Implements parallel file processing with rayon
 - Supports fuzzy matching for symbol search
 - Binary serialization of symbol data for performance
-- Main entry point: `src/symbol_search_lsp.rs`
+- Main entry point: `src/bin/pylight.rs`
 
 ### TypeScript Extension (pydance)
 - Activates on Python workspaces
@@ -79,7 +79,7 @@ The project uses GitHub Actions for CI/CD. Key jobs include:
 - Integration tests require pylight binary in extension root directory
 
 ## Key Files and Modules
-- `pylight/src/symbol_search_lsp.rs`: Main LSP server implementation
+- `pylight/bin/pylight.rs`: Main LSP server implementation
 - `pylight/src/symbols.rs`: Symbol extraction and processing
 - `pylight/src/python.rs`: Python-specific parsing logic
 - `pydance/src/extension.ts`: VSCode extension entry point

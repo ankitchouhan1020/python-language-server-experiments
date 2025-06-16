@@ -1,51 +1,54 @@
 use pylight::{SearchEngine, Symbol, SymbolKind};
 use std::path::PathBuf;
+use std::sync::Arc;
 
-fn create_test_symbols() -> Vec<Symbol> {
+fn create_test_symbols() -> Vec<Arc<Symbol>> {
     vec![
-        Symbol::new(
+        Arc::new(Symbol::new(
             "test_function".to_string(),
             SymbolKind::Function,
             PathBuf::from("test.py"),
             1,
             0,
-        ),
-        Symbol::new(
+        )),
+        Arc::new(Symbol::new(
             "TestClass".to_string(),
             SymbolKind::Class,
             PathBuf::from("test.py"),
             10,
             0,
-        ),
-        Symbol::new(
+        )),
+        Arc::new(Symbol::new(
             "another_test_func".to_string(),
             SymbolKind::Function,
             PathBuf::from("test.py"),
             20,
             0,
-        ),
-        Symbol::new(
+        )),
+        Arc::new(Symbol::new(
             "helper_function".to_string(),
             SymbolKind::Function,
             PathBuf::from("helper.py"),
             5,
             0,
-        ),
-        Symbol::new(
+        )),
+        Arc::new(Symbol::new(
             "HelperClass".to_string(),
             SymbolKind::Class,
             PathBuf::from("helper.py"),
             15,
             0,
+        )),
+        Arc::new(
+            Symbol::new(
+                "test_method".to_string(),
+                SymbolKind::Method,
+                PathBuf::from("test.py"),
+                12,
+                4,
+            )
+            .with_container("TestClass".to_string()),
         ),
-        Symbol::new(
-            "test_method".to_string(),
-            SymbolKind::Method,
-            PathBuf::from("test.py"),
-            12,
-            4,
-        )
-        .with_container("TestClass".to_string()),
     ]
 }
 
