@@ -1,7 +1,16 @@
 [package]
-name = "symbol-experiments"
-version = "0.1.0"
+name = "pylight"
+version = "0.3.0"
 edition = "2021"
+
+
+[[bin]]
+name = "pylight"
+path = "src/bin/pylight.rs"
+
+[[bin]]
+name = "pylight_devtools"
+path = "src/bin/pylight_devtools.rs"
 
 [dependencies]
 walkdir = "2.5.0"
@@ -28,6 +37,25 @@ lsp-types = "0.97.0"
 serde_json = "1.0.140"
 url = "2.5.4"
 radix_trie = "0.2.1"
+tiny_http = "0.12"
+urlencoding = "2.1"
+
+[build-dependencies]
+chrono = "0.4"
 
 [dev-dependencies]
 tempfile = "3.5.0"
+criterion = "0.5"
+pretty_assertions = "1.4"
+
+[[bench]]
+name = "symbol_extraction"
+harness = false
+
+[[bench]]
+name = "search"
+harness = false
+
+[[bench]]
+name = "parallel_indexing"
+harness = false

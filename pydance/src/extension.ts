@@ -32,8 +32,8 @@ export function activate(context: vscode.ExtensionContext) {
 
   // If the extension is launched in debug mode then the debug server options are used
   const serverOptions: ServerOptions = {
-    run: { command: serverPath, args: ["--directory", workspaceRoot] },
-    debug: { command: serverPath, args: ["--directory", workspaceRoot] },
+    run: { command: serverPath, args: [] },
+    debug: { command: serverPath, args: [] },
   };
 
   // Options to control the language client
