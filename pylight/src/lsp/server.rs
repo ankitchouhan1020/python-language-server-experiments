@@ -1,10 +1,11 @@
 //! Core LSP server implementation
 
 use crate::{Error, Result, SearchEngine, SymbolIndex};
-use lsp_server::{Connection, Message, Response};
+use lsp_server::{Connection, Message, RequestId, Response};
 use lsp_types::{InitializeParams, ServerCapabilities, WorkspaceSymbolParams};
+use std::collections::HashSet;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 
 pub struct LspServer {
@@ -12,6 +13,7 @@ pub struct LspServer {
     index: Arc<SymbolIndex>,
     search_engine: Arc<SearchEngine>,
     workspace_root: Option<PathBuf>,
+    cancelled_requests: Arc<Mutex<HashSet<RequestId>>>,
 }
 
 impl LspServer {
@@ -23,6 +25,7 @@ impl LspServer {
             index: Arc::new(SymbolIndex::new()),
             search_engine: Arc::new(SearchEngine::new()),
             workspace_root: None,
+            cancelled_requests: Arc::new(Mutex::new(HashSet::new())),
         })
     }
 
@@ -69,14 +72,47 @@ impl LspServer {
 
                     // Handle workspace/symbol requests
                     if req.method == "workspace/symbol" {
+                        let start = std::time::Instant::now();
+                        let request_id = req.id.clone();
+
                         match serde_json::from_value::<WorkspaceSymbolParams>(req.params) {
                             Ok(params) => {
+                                // Check if request was already cancelled
+                                let is_cancelled = self
+                                    .cancelled_requests
+                                    .lock()
+                                    .unwrap()
+                                    .contains(&request_id);
+                                if is_cancelled {
+                                    tracing::info!(
+                                        "Request {} was cancelled before processing",
+                                        request_id
+                                    );
+                                    self.cancelled_requests.lock().unwrap().remove(&request_id);
+                                    continue;
+                                }
+
+                                let query = params.query.clone();
+                                let cancelled_requests = self.cancelled_requests.clone();
+                                let req_id_for_check = request_id.clone();
+
                                 match super::handlers::handle_workspace_symbol(
                                     params,
                                     self.index.clone(),
                                     self.search_engine.clone(),
+                                    cancelled_requests,
+                                    req_id_for_check,
                                 ) {
                                     Ok(symbols) => {
+                                        let duration = start.elapsed();
+                                        tracing::info!(
+                                            "Request {} (workspace/symbol '{}') completed in {:?} - {} results",
+                                            request_id,
+                                            query,
+                                            duration,
+                                            symbols.len()
+                                        );
+
                                         let resp = Response {
                                             id: req.id,
                                             result: Some(serde_json::to_value(symbols).unwrap()),
@@ -88,6 +124,15 @@ impl LspServer {
                                             .unwrap();
                                     }
                                     Err(e) => {
+                                        let duration = start.elapsed();
+                                        tracing::error!(
+                                            "Request {} (workspace/symbol '{}') failed in {:?} - {}",
+                                            request_id,
+                                            query,
+                                            duration,
+                                            e
+                                        );
+
                                         let resp = Response {
                                             id: req.id,
                                             result: None,
@@ -120,10 +165,28 @@ impl LspServer {
                                     .unwrap();
                             }
                         }
+                    } else {
+                        tracing::info!(
+                            "Received LSP request we are not handling yet: {}",
+                            req.method
+                        )
                     }
                 }
                 Message::Response(_) => {}
-                Message::Notification(_) => {}
+                Message::Notification(notif) => {
+                    // Handle $/cancelRequest notifications
+                    if notif.method == "$/cancelRequest" {
+                        #[derive(serde::Deserialize)]
+                        struct CancelParams {
+                            id: RequestId,
+                        }
+
+                        if let Ok(params) = serde_json::from_value::<CancelParams>(notif.params) {
+                            tracing::info!("Received cancel request for id: {:?}", params.id);
+                            self.cancelled_requests.lock().unwrap().insert(params.id);
+                        }
+                    }
+                }
             }
         }
 

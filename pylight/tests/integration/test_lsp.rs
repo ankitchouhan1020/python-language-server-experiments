@@ -1,5 +1,8 @@
+use lsp_server::RequestId;
 use pylight::SymbolIndex;
+use std::collections::HashSet;
 use std::path::PathBuf;
+use std::sync::Mutex;
 
 #[test]
 fn test_lsp_handler() {
@@ -37,8 +40,17 @@ fn test_lsp_handler() {
         ..Default::default()
     };
 
-    let results =
-        pylight::lsp::handlers::handle_workspace_symbol(params, index, search_engine).unwrap();
+    let cancelled_requests = Arc::new(Mutex::new(HashSet::new()));
+    let request_id = RequestId::from(1);
+
+    let results = pylight::lsp::handlers::handle_workspace_symbol(
+        params,
+        index,
+        search_engine,
+        cancelled_requests,
+        request_id,
+    )
+    .unwrap();
 
     assert_eq!(results.len(), 2);
     assert!(results.iter().any(|s| s.name == "test_function"));
@@ -58,7 +70,16 @@ fn test_empty_query_returns_empty() {
         ..Default::default()
     };
 
-    let results =
-        pylight::lsp::handlers::handle_workspace_symbol(params, index, search_engine).unwrap();
+    let cancelled_requests = Arc::new(Mutex::new(HashSet::new()));
+    let request_id = RequestId::from(2);
+
+    let results = pylight::lsp::handlers::handle_workspace_symbol(
+        params,
+        index,
+        search_engine,
+        cancelled_requests,
+        request_id,
+    )
+    .unwrap();
     assert_eq!(results.len(), 0);
 }
