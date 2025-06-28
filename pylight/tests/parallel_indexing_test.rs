@@ -120,9 +120,7 @@ fn test_parallel_indexing_uses_multiple_threads() {
 
     let unique_threads = thread_ids.lock().unwrap().len();
 
-    eprintln!(
-        "Used {unique_threads} unique threads out of {num_threads} available"
-    );
+    eprintln!("Used {unique_threads} unique threads out of {num_threads} available");
 
     // We should use more than 1 thread
     assert!(

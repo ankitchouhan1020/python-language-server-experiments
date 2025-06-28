@@ -32,7 +32,7 @@ fn generate_symbols(count: usize) -> Vec<Arc<Symbol>> {
                     i,
                     4,
                 )
-                .with_container(format!("Class_{}", i - 1))
+                .with_container(format!("Class_{}", i - 1)),
             ));
         }
     }

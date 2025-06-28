@@ -80,8 +80,10 @@ fn main() {
                     Err(e) => {
                         error!("Failed to parse index request: {}", e);
                         let response = Response::from_string(
-                            json!({"status": "error", "message": format!("Invalid request: {e}")}).to_string()
-                        ).with_status_code(400);
+                            json!({"status": "error", "message": format!("Invalid request: {e}")})
+                                .to_string(),
+                        )
+                        .with_status_code(400);
                         request
                             .respond(
                                 response.with_header(
