@@ -1,5 +1,6 @@
 //! File system watcher with debouncing support
 
+use crate::ignore::IgnoreFilter;
 use crate::Result;
 use notify::{Event, EventKind, RecursiveMode, Watcher};
 use std::collections::HashSet;
@@ -49,15 +50,19 @@ pub struct FileWatcher {
     _event_handler: Arc<dyn FileEventHandler + Send + Sync>,
     _shutdown_tx: Sender<()>,
     _debouncer_handle: Option<thread::JoinHandle<()>>,
+    _ignore_filter: Arc<IgnoreFilter>,
 }
 
 /// Trait for handling file system events
 pub trait FileEventHandler: Send + Sync {
     /// Handle a file system event
     fn handle_event(&self, event: FileEvent);
-    
+
     /// Check if a path should be watched (e.g., is it a Python file?)
     fn should_watch(&self, path: &Path) -> bool;
+
+    /// Get the workspace root path
+    fn workspace_root(&self) -> &Path;
 }
 
 impl FileWatcher {
@@ -68,7 +73,12 @@ impl FileWatcher {
     ) -> Result<Self> {
         let (event_tx, event_rx) = mpsc::channel::<notify::Event>();
         let (shutdown_tx, shutdown_rx) = mpsc::channel::<()>();
-        
+
+        // Create the ignore filter
+        let ignore_filter = Arc::new(IgnoreFilter::new(
+            event_handler.workspace_root().to_path_buf(),
+        ));
+
         // Create the notify watcher
         let watcher = notify::recommended_watcher(move |res: notify::Result<Event>| {
             if let Ok(event) = res {
@@ -76,60 +86,74 @@ impl FileWatcher {
                 let _ = event_tx.send(event);
             }
         })?;
-        
+
         // Spawn the debouncer thread
         let event_handler_clone = event_handler.clone();
         let config_clone = config.clone();
+        let ignore_filter_clone = ignore_filter.clone();
         let handle = thread::spawn(move || {
             Self::debouncer_thread(
                 config_clone,
                 event_handler_clone,
                 event_rx,
                 shutdown_rx,
+                ignore_filter_clone,
             );
         });
-        
+
         Ok(Self {
             _config: config,
             watcher,
             _event_handler: event_handler,
             _shutdown_tx: shutdown_tx,
             _debouncer_handle: Some(handle),
+            _ignore_filter: ignore_filter,
         })
     }
-    
+
     /// The debouncer thread that implements sliding window behavior
     fn debouncer_thread(
         config: WatcherConfig,
         event_handler: Arc<dyn FileEventHandler + Send + Sync>,
         event_rx: Receiver<notify::Event>,
         shutdown_rx: Receiver<()>,
+        ignore_filter: Arc<IgnoreFilter>,
     ) {
         let mut pending_events = HashSet::new();
         let mut last_event_time = Instant::now();
         let mut first_event_time = None;
-        
+
         let debounce_duration = Duration::from_millis(config.debounce_ms);
         let max_timeout = Duration::from_millis(config.timeout_ms);
-        
+
         loop {
             // Calculate timeout for receiving events
             let timeout = if pending_events.is_empty() {
+                // No pending events, wait longer for the next event
                 Duration::from_secs(1)
             } else {
+                // We have pending events, check if debounce period has elapsed
                 let elapsed = last_event_time.elapsed();
                 if elapsed >= debounce_duration {
+                    // Process immediately
                     Duration::from_millis(0)
                 } else {
+                    // Wait for remaining debounce time
                     debounce_duration - elapsed
                 }
             };
-            
+
             // Try to receive events with timeout
             match event_rx.recv_timeout(timeout) {
                 Ok(event) => {
                     // Process the event
                     for path in event.paths {
+                        // Use ignore filter to check if we should process this path
+                        if ignore_filter.should_ignore(&path) {
+                            debug!("Ignoring event for: {}", path.display());
+                            continue;
+                        }
+
                         match event.kind {
                             EventKind::Create(_) | EventKind::Modify(_) => {
                                 if event_handler.should_watch(&path) {
@@ -144,7 +168,7 @@ impl FileWatcher {
                             _ => {}
                         }
                     }
-                    
+
                     // Update timing - this resets the debounce timer
                     if !pending_events.is_empty() {
                         last_event_time = Instant::now();
@@ -152,11 +176,14 @@ impl FileWatcher {
                             first_event_time = Some(last_event_time);
                         }
                     }
-                    
+
                     // Check if we've exceeded the maximum timeout
                     if let Some(first_time) = first_event_time {
                         if first_time.elapsed() >= max_timeout {
-                            debug!("Maximum timeout reached, processing {} events", pending_events.len());
+                            debug!(
+                                "Maximum timeout reached, processing {} events",
+                                pending_events.len()
+                            );
                             Self::process_events(&config, &event_handler, &mut pending_events);
                             first_event_time = None;
                         }
@@ -164,8 +191,12 @@ impl FileWatcher {
                 }
                 Err(mpsc::RecvTimeoutError::Timeout) => {
                     // Timeout occurred, check if we need to process events
-                    if !pending_events.is_empty() && last_event_time.elapsed() >= debounce_duration {
-                        debug!("Debounce period expired, processing {} events", pending_events.len());
+                    if !pending_events.is_empty() && last_event_time.elapsed() >= debounce_duration
+                    {
+                        debug!(
+                            "Debounce period expired, processing {} events",
+                            pending_events.len()
+                        );
                         Self::process_events(&config, &event_handler, &mut pending_events);
                         first_event_time = None;
                     }
@@ -175,7 +206,7 @@ impl FileWatcher {
                     break;
                 }
             }
-            
+
             // Check for shutdown signal (non-blocking)
             if shutdown_rx.try_recv().is_ok() {
                 info!("File watcher debouncer shutting down");
@@ -183,7 +214,7 @@ impl FileWatcher {
             }
         }
     }
-    
+
     /// Process accumulated events
     fn process_events(
         config: &WatcherConfig,
@@ -192,7 +223,7 @@ impl FileWatcher {
     ) {
         let mut changed_paths = HashSet::new();
         let mut removed_paths = HashSet::new();
-        
+
         // Separate events by type
         for (path, is_removed) in pending_events.drain() {
             if is_removed {
@@ -202,12 +233,12 @@ impl FileWatcher {
                 changed_paths.insert(path);
             }
         }
-        
+
         // Handle removed files
         for path in removed_paths {
             event_handler.handle_event(FileEvent::FileRemoved(path));
         }
-        
+
         // Handle changed files
         let changed_files: Vec<PathBuf> = changed_paths.into_iter().collect();
         if !changed_files.is_empty() {
@@ -227,14 +258,17 @@ impl FileWatcher {
             }
         }
     }
-    
+
     /// Start watching a directory recursively
     pub fn watch(&mut self, path: &Path) -> Result<()> {
-        info!("Starting file watcher for: {} (recursive mode)", path.display());
+        info!(
+            "Starting file watcher for: {} (recursive mode)",
+            path.display()
+        );
         self.watcher.watch(path, RecursiveMode::Recursive)?;
         Ok(())
     }
-    
+
     /// Stop watching a directory
     pub fn unwatch(&mut self, path: &Path) -> Result<()> {
         info!("Stopping file watcher for: {}", path.display());
@@ -247,7 +281,7 @@ impl Drop for FileWatcher {
     fn drop(&mut self) {
         // Signal shutdown
         let _ = self._shutdown_tx.send(());
-        
+
         // Wait for debouncer thread to finish
         if let Some(handle) = self._debouncer_handle.take() {
             let _ = handle.join();
@@ -278,6 +312,10 @@ mod tests {
                 .and_then(|s| s.to_str())
                 .map(|s| s == "py")
                 .unwrap_or(false)
+        }
+
+        fn workspace_root(&self) -> &Path {
+            Path::new(".")
         }
     }
 
