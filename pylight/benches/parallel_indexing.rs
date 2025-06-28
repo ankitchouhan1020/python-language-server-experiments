@@ -3,6 +3,7 @@ use pylight::SymbolIndex;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
+use walkdir::WalkDir;
 
 fn download_django_if_needed() -> PathBuf {
     let test_dir = std::env::temp_dir().join("pylight-benchmark");
@@ -36,10 +37,16 @@ fn benchmark_parallel_indexing(c: &mut Criterion) {
     let django_dir = download_django_if_needed();
 
     // Collect Python files once
-    let python_files = SymbolIndex::collect_python_files(&django_dir);
+    let python_files: Vec<PathBuf> = WalkDir::new(&django_dir)
+        .follow_links(false)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file() && e.path().extension().is_some_and(|ext| ext == "py"))
+        .map(|e| e.path().to_path_buf())
+        .collect();
     let file_count = python_files.len();
 
-    eprintln!("Found {} Python files in Django repository", file_count);
+    eprintln!("Found {file_count} Python files in Django repository");
 
     // Create a benchmark group
     let mut group = c.benchmark_group("parallel_indexing");
@@ -52,7 +59,7 @@ fn benchmark_parallel_indexing(c: &mut Criterion) {
             continue; // Skip thread counts higher than available CPUs
         }
 
-        group.bench_function(format!("{}_threads", num_threads), |b| {
+        group.bench_function(format!("{num_threads}_threads"), |b| {
             b.iter(|| {
                 // Configure rayon thread pool for this benchmark
                 let pool = rayon::ThreadPoolBuilder::new()
@@ -65,10 +72,8 @@ fn benchmark_parallel_indexing(c: &mut Criterion) {
                     let index = Arc::new(SymbolIndex::new());
 
                     // Parse and index files
-                    let result = index.parse_and_index_files(python_files.clone()).unwrap();
-
                     // Return the result to prevent optimization
-                    result
+                    index.parse_and_index_files(python_files.clone()).unwrap()
                 });
             });
         });
@@ -79,7 +84,13 @@ fn benchmark_parallel_indexing(c: &mut Criterion) {
 
 fn benchmark_parallel_vs_sequential(c: &mut Criterion) {
     let django_dir = download_django_if_needed();
-    let python_files = SymbolIndex::collect_python_files(&django_dir);
+    let python_files: Vec<PathBuf> = WalkDir::new(&django_dir)
+        .follow_links(false)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file() && e.path().extension().is_some_and(|ext| ext == "py"))
+        .map(|e| e.path().to_path_buf())
+        .collect();
 
     // Take a subset for faster comparison
     let subset: Vec<_> = python_files.into_iter().take(100).collect();

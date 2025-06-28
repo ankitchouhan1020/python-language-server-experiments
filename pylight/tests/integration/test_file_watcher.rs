@@ -27,7 +27,7 @@ fn test_file_watcher_single_file_change() {
     assert_eq!(index.get_file_count(), 1);
     let initial_symbols = index.get_all_symbols();
     println!(
-        "Initial symbols: {:?}",
+        "Initial symbols: {:#?}",
         initial_symbols.iter().map(|s| &s.name).collect::<Vec<_>>()
     );
     assert_eq!(initial_symbols.len(), 1);
@@ -58,12 +58,12 @@ fn test_file_watcher_single_file_change() {
 
     // Check that the index was updated
     let file_count = index.get_file_count();
-    println!("File count after update: {}", file_count);
+    println!("File count after update: {file_count}");
     assert_eq!(file_count, 1);
 
     let symbols = index.get_all_symbols();
     let symbol_names: Vec<&str> = symbols.iter().map(|s| s.name.as_str()).collect();
-    println!("Symbols after update: {:?}", symbol_names);
+    println!("Symbols after update: {symbol_names:?}");
     assert!(symbol_names.contains(&"hello"));
     assert!(symbol_names.contains(&"world"));
     assert_eq!(symbols.len(), 2);
@@ -77,8 +77,8 @@ fn test_file_watcher_bulk_changes() {
 
     // Create multiple Python files
     for i in 0..15 {
-        let file_path = workspace_path.join(format!("test{}.py", i));
-        fs::write(&file_path, format!("def func{}():\n    pass\n", i)).unwrap();
+        let file_path = workspace_path.join(format!("test{i}.py"));
+        fs::write(&file_path, format!("def func{i}():\n    pass\n")).unwrap();
     }
 
     // Create index and do initial indexing
@@ -103,13 +103,10 @@ fn test_file_watcher_bulk_changes() {
 
     // Modify multiple files at once (simulating a git operation)
     for i in 0..12 {
-        let file_path = workspace_path.join(format!("test{}.py", i));
+        let file_path = workspace_path.join(format!("test{i}.py"));
         fs::write(
             &file_path,
-            format!(
-                "def func{}():\n    pass\n\ndef extra{}():\n    pass\n",
-                i, i
-            ),
+            format!("def func{i}():\n    pass\n\ndef extra{i}():\n    pass\n"),
         )
         .unwrap();
     }
@@ -197,7 +194,7 @@ fn test_file_watcher_rapid_changes() {
 
     // Make rapid changes
     for i in 0..5 {
-        fs::write(&file_path, format!("def func{}():\n    pass\n", i)).unwrap();
+        fs::write(&file_path, format!("def func{i}():\n    pass\n")).unwrap();
         thread::sleep(Duration::from_millis(50)); // Less than debounce period
     }
 

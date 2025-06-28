@@ -13,7 +13,7 @@ impl PythonParser {
         let mut parser = Parser::new();
         parser
             .set_language(tree_sitter_python::language())
-            .map_err(|e| Error::Parse(format!("Failed to set language: {}", e)))?;
+            .map_err(|e| Error::Parse(format!("Failed to set language: {e}")))?;
         Ok(Self { parser })
     }
 

@@ -43,7 +43,7 @@ impl LspServer {
         let initialization_params = self
             .connection
             .initialize(serde_json::to_value(server_capabilities).unwrap())
-            .map_err(|e| Error::Lsp(format!("Failed to initialize: {}", e)))?;
+            .map_err(|e| Error::Lsp(format!("Failed to initialize: {e}")))?;
 
         // Extract workspace root
         if let Ok(params) = serde_json::from_value::<InitializeParams>(initialization_params) {
@@ -171,7 +171,7 @@ impl LspServer {
                                             result: None,
                                             error: Some(lsp_server::ResponseError {
                                                 code: lsp_server::ErrorCode::InternalError as i32,
-                                                message: format!("Error: {}", e),
+                                                message: format!("Error: {e}"),
                                                 data: None,
                                             }),
                                         };
@@ -188,7 +188,7 @@ impl LspServer {
                                     result: None,
                                     error: Some(lsp_server::ResponseError {
                                         code: lsp_server::ErrorCode::InvalidParams as i32,
-                                        message: format!("Invalid params: {}", e),
+                                        message: format!("Invalid params: {e}"),
                                         data: None,
                                     }),
                                 };

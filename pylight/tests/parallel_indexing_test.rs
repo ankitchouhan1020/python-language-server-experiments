@@ -11,7 +11,7 @@ fn create_test_files_with_delays() -> (TempDir, Vec<std::path::PathBuf>) {
 
     // Create 10 Python files with sleep statements
     for i in 0..10 {
-        let file_path = temp_dir.path().join(format!("file_{}.py", i));
+        let file_path = temp_dir.path().join(format!("file_{i}.py"));
         let content = format!(
             r#"
 import time
@@ -19,14 +19,13 @@ import time
 # This simulates a slow-to-parse file
 time.sleep(0.001)  # Just for the content, won't actually execute
 
-def function_{}():
+def function_{i}():
     pass
 
-class Class_{}:
+class Class_{i}:
     def method(self):
         pass
-"#,
-            i, i
+"#
         );
         std::fs::write(&file_path, content).unwrap();
         files.push(file_path);
@@ -82,15 +81,13 @@ fn test_parallel_indexing_is_faster_than_sequential() {
     let speedup = sequential_duration.as_secs_f64() / parallel_duration.as_secs_f64();
 
     eprintln!(
-        "Sequential: {:?}, Parallel: {:?}, Speedup: {:.2}x",
-        sequential_duration, parallel_duration, speedup
+        "Sequential: {sequential_duration:?}, Parallel: {parallel_duration:?}, Speedup: {speedup:.2}x"
     );
 
     // We expect at least 1.5x speedup with multiple threads
     assert!(
         speedup > 1.5,
-        "Parallel indexing should be at least 1.5x faster than sequential. Got {:.2}x speedup",
-        speedup
+        "Parallel indexing should be at least 1.5x faster than sequential. Got {speedup:.2}x speedup"
     );
 }
 
@@ -124,14 +121,12 @@ fn test_parallel_indexing_uses_multiple_threads() {
     let unique_threads = thread_ids.lock().unwrap().len();
 
     eprintln!(
-        "Used {} unique threads out of {} available",
-        unique_threads, num_threads
+        "Used {unique_threads} unique threads out of {num_threads} available"
     );
 
     // We should use more than 1 thread
     assert!(
         unique_threads > 1,
-        "Parallel processing should use multiple threads. Only used {} thread(s)",
-        unique_threads
+        "Parallel processing should use multiple threads. Only used {unique_threads} thread(s)"
     );
 }

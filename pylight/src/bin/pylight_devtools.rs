@@ -80,7 +80,7 @@ fn main() {
                     Err(e) => {
                         error!("Failed to parse index request: {}", e);
                         let response = Response::from_string(
-                            json!({"status": "error", "message": format!("Invalid request: {}", e)}).to_string()
+                            json!({"status": "error", "message": format!("Invalid request: {e}")}).to_string()
                         ).with_status_code(400);
                         request
                             .respond(
@@ -211,7 +211,7 @@ fn spawn_pylight(workspace_path: &str, pylight: SharedPylight) -> Result<(), Str
 
     let mut child = cmd
         .spawn()
-        .map_err(|e| format!("Failed to spawn pylight: {}", e))?;
+        .map_err(|e| format!("Failed to spawn pylight: {e}"))?;
 
     info!("Pylight process spawned with PID: {:?}", child.id());
 
@@ -242,7 +242,7 @@ fn spawn_pylight(workspace_path: &str, pylight: SharedPylight) -> Result<(), Str
         "method": "initialize",
         "params": {
             "processId": std::process::id(),
-            "rootUri": format!("file://{}", workspace_path),
+            "rootUri": format!("file://{workspace_path}"),
             "capabilities": {}
         }
     });
@@ -337,7 +337,7 @@ fn search_symbols(query: &str, pylight: SharedPylight) -> Result<Vec<Value>, Str
     debug!("Workspace/symbol response: {}", response);
 
     if let Some(error) = response.get("error") {
-        return Err(format!("LSP error: {:?}", error));
+        return Err(format!("LSP error: {error:?}"));
     }
 
     let results = response
@@ -364,15 +364,15 @@ fn send_request(instance: &mut PylightInstance, request: &Value) -> Result<(), S
     instance
         .stdin
         .write_all(header.as_bytes())
-        .map_err(|e| format!("Failed to write header: {}", e))?;
+        .map_err(|e| format!("Failed to write header: {e}"))?;
     instance
         .stdin
         .write_all(content.as_bytes())
-        .map_err(|e| format!("Failed to write content: {}", e))?;
+        .map_err(|e| format!("Failed to write content: {e}"))?;
     instance
         .stdin
         .flush()
-        .map_err(|e| format!("Failed to flush: {}", e))?;
+        .map_err(|e| format!("Failed to flush: {e}"))?;
 
     Ok(())
 }
@@ -388,7 +388,7 @@ fn read_lsp_message(instance: &mut PylightInstance) -> Result<Value, String> {
         instance
             .stdout
             .read_line(&mut line)
-            .map_err(|e| format!("Failed to read header: {}", e))?;
+            .map_err(|e| format!("Failed to read header: {e}"))?;
 
         debug!("Read header line: {}", line.trim());
 
@@ -401,7 +401,7 @@ fn read_lsp_message(instance: &mut PylightInstance) -> Result<Value, String> {
             content_length = Some(
                 len_str
                     .parse::<usize>()
-                    .map_err(|e| format!("Invalid content length: {}", e))?,
+                    .map_err(|e| format!("Invalid content length: {e}"))?,
             );
             debug!("Found Content-Length: {}", content_length.unwrap());
         }
@@ -416,13 +416,13 @@ fn read_lsp_message(instance: &mut PylightInstance) -> Result<Value, String> {
     instance
         .stdout
         .read_exact(&mut content)
-        .map_err(|e| format!("Failed to read content: {}", e))?;
+        .map_err(|e| format!("Failed to read content: {e}"))?;
 
-    let content_str = String::from_utf8(content).map_err(|e| format!("Invalid UTF-8: {}", e))?;
+    let content_str = String::from_utf8(content).map_err(|e| format!("Invalid UTF-8: {e}"))?;
     debug!("Read LSP message content: {}", content_str);
 
     let response: Value =
-        serde_json::from_str(&content_str).map_err(|e| format!("Failed to parse JSON: {}", e))?;
+        serde_json::from_str(&content_str).map_err(|e| format!("Failed to parse JSON: {e}"))?;
 
     Ok(response)
 }
