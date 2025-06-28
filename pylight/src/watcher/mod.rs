@@ -77,20 +77,15 @@ impl FileWatcher {
                         let mut removed_paths = HashSet::new();
 
                         for event in events {
-                            match event.kind {
-                                DebouncedEventKind::Any => {
-                                    // Check if file exists to determine if it's a create/modify or remove
-                                    if event.path.exists() {
-                                        if event_handler_clone.should_watch(&event.path) {
-                                            changed_paths.insert(event.path);
-                                        }
-                                    } else {
-                                        if event_handler_clone.should_watch(&event.path) {
-                                            removed_paths.insert(event.path);
-                                        }
+                            if event.kind == DebouncedEventKind::Any {
+                                // Check if file exists to determine if it's a create/modify or remove
+                                if event.path.exists() {
+                                    if event_handler_clone.should_watch(&event.path) {
+                                        changed_paths.insert(event.path);
                                     }
+                                } else if event_handler_clone.should_watch(&event.path) {
+                                    removed_paths.insert(event.path);
                                 }
-                                _ => {}
                             }
                         }
 
@@ -156,6 +151,7 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Mutex;
 
+    #[allow(dead_code)]
     struct TestEventHandler {
         events: Arc<Mutex<Vec<FileEvent>>>,
         counter: Arc<AtomicUsize>,
