@@ -10,6 +10,10 @@ pub fn collect_python_files(root: &PathBuf) -> Vec<PathBuf> {
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file() && e.path().extension().is_some_and(|ext| ext == "py"))
-        .map(|e| e.path().to_path_buf())
+        .map(|e| {
+            e.path()
+                .canonicalize()
+                .unwrap_or_else(|_| e.path().to_path_buf())
+        })
         .collect()
 }

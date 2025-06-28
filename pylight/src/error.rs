@@ -32,4 +32,10 @@ impl From<io::Error> for Error {
     }
 }
 
+impl From<notify::Error> for Error {
+    fn from(err: notify::Error) -> Self {
+        Error::Other(format!("File watcher error: {}", err))
+    }
+}
+
 pub type Result<T> = std::result::Result<T, Error>;

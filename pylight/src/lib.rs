@@ -9,6 +9,7 @@ pub mod lsp;
 pub mod parser;
 pub mod search;
 pub mod symbols;
+pub mod watcher;
 
 pub use error::{Error, Result};
 pub use index::SymbolIndex;
