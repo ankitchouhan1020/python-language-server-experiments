@@ -123,8 +123,7 @@ impl IgnoreFilter {
         if !path.is_dir() {
             let mut current = check_path;
             while let Some(parent) = current.parent() {
-                if !parent.as_os_str().is_empty()
-                    && self.matcher.matched(parent, true).is_ignore()
+                if !parent.as_os_str().is_empty() && self.matcher.matched(parent, true).is_ignore()
                 {
                     return true;
                 }

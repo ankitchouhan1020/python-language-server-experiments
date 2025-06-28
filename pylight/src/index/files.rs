@@ -7,13 +7,13 @@ use std::path::PathBuf;
 /// Collect all Python files in a directory
 pub fn collect_python_files(root: &PathBuf) -> Vec<PathBuf> {
     let ignore_filter = IgnoreFilter::new(root.clone());
-    
+
     // Use the ignore crate's WalkBuilder which respects .gitignore
     let mut builder = WalkBuilder::new(root);
     builder
         .standard_filters(false) // We'll use our own filter
         .follow_links(false);
-    
+
     builder
         .build()
         .filter_map(|entry| entry.ok())
@@ -25,7 +25,8 @@ pub fn collect_python_files(root: &PathBuf) -> Vec<PathBuf> {
                 && !ignore_filter.should_ignore(path)
         })
         .map(|entry| {
-            entry.path()
+            entry
+                .path()
                 .canonicalize()
                 .unwrap_or_else(|_| entry.path().to_path_buf())
         })

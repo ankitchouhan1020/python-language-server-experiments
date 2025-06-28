@@ -228,10 +228,23 @@ fn spawn_pylight(workspace_path: &str, pylight: SharedPylight) -> Result<(), Str
         let mut stderr_reader = stderr_reader;
         move || {
             let mut line = String::new();
-            while stderr_reader.read_line(&mut line).is_ok() {
-                if !line.is_empty() {
-                    warn!("pylight stderr: {}", line.trim());
-                    line.clear();
+            loop {
+                match stderr_reader.read_line(&mut line) {
+                    Ok(0) => {
+                        // EOF reached, pylight process has closed stderr
+                        debug!("pylight stderr closed");
+                        break;
+                    }
+                    Ok(_) => {
+                        if !line.is_empty() {
+                            warn!("pylight stderr: {}", line.trim());
+                            line.clear();
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Error reading pylight stderr: {}", e);
+                        break;
+                    }
                 }
             }
         }
