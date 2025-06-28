@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::Instant;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 /// State of the index updater
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -62,7 +62,13 @@ impl IndexUpdater {
                 }
             },
             Err(e) => {
-                warn!("Failed to read {}: {}", path.display(), e);
+                // Only warn for errors other than "file not found" since that's expected
+                // during rapid file system changes (e.g., git operations)
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    warn!("Failed to read {}: {}", path.display(), e);
+                } else {
+                    debug!("File no longer exists: {}", path.display());
+                }
                 Ok(())
             }
         }
@@ -93,7 +99,13 @@ impl IndexUpdater {
                         }
                     },
                     Err(e) => {
-                        warn!("Failed to read {}: {}", path.display(), e);
+                        // Only warn for errors other than "file not found" since that's expected
+                        // during rapid file system changes (e.g., git operations)
+                        if e.kind() != std::io::ErrorKind::NotFound {
+                            warn!("Failed to read {}: {}", path.display(), e);
+                        } else {
+                            debug!("File no longer exists: {}", path.display());
+                        }
                         None
                     }
                 }
@@ -247,6 +259,10 @@ impl FileEventHandler for IndexUpdater {
             .and_then(|s| s.to_str())
             .map(|s| s == "py")
             .unwrap_or(false)
+    }
+
+    fn workspace_root(&self) -> &Path {
+        &self.workspace_root
     }
 }
 

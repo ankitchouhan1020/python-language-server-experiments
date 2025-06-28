@@ -1,6 +1,6 @@
 //! Symbol indexing and storage
 
-mod files;
+pub mod files;
 pub mod updater;
 
 use crate::{PythonParser, Result, Symbol};
@@ -260,7 +260,13 @@ impl SymbolIndex {
                         }
                     },
                     Err(e) => {
-                        tracing::warn!("Failed to read {}: {}", path.display(), e);
+                        // Only warn for errors other than "file not found" since that's expected
+                        // during rapid file system changes (e.g., git operations)
+                        if e.kind() != std::io::ErrorKind::NotFound {
+                            tracing::warn!("Failed to read {}: {}", path.display(), e);
+                        } else {
+                            tracing::debug!("File no longer exists: {}", path.display());
+                        }
                         None
                     }
                 }
