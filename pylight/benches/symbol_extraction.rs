@@ -113,23 +113,21 @@ fn generate_python_file(num_functions: usize) -> String {
     for i in 0..num_functions {
         content.push_str(&format!(
             r#"
-def function_{}(x, y):
-    """Function number {}"""
-    return x + y + {}
+def function_{i}(x, y):
+    """Function number {i}"""
+    return x + y + {i}
 
-"#,
-            i, i, i
+"#
         ));
 
         if i % 10 == 0 {
             content.push_str(&format!(
                 r#"
-class Class_{}:
-    def method_{}(self):
-        return {}
+class Class_{i}:
+    def method_{i}(self):
+        return {i}
         
-"#,
-                i, i, i
+"#
             ));
         }
     }

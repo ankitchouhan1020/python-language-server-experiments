@@ -1,5 +1,7 @@
 //! Core LSP server implementation
 
+use crate::index::updater::IndexUpdater;
+use crate::watcher::{FileWatcher, WatcherConfig};
 use crate::{Error, Result, SearchEngine, SymbolIndex};
 use lsp_server::{Connection, Message, RequestId, Response};
 use lsp_types::{InitializeParams, ServerCapabilities, WorkspaceSymbolParams};
@@ -14,6 +16,7 @@ pub struct LspServer {
     search_engine: Arc<SearchEngine>,
     workspace_root: Option<PathBuf>,
     cancelled_requests: Arc<Mutex<HashSet<RequestId>>>,
+    _file_watcher: Option<FileWatcher>,
 }
 
 impl LspServer {
@@ -26,6 +29,7 @@ impl LspServer {
             search_engine: Arc::new(SearchEngine::new()),
             workspace_root: None,
             cancelled_requests: Arc::new(Mutex::new(HashSet::new())),
+            _file_watcher: None,
         })
     }
 
@@ -39,7 +43,7 @@ impl LspServer {
         let initialization_params = self
             .connection
             .initialize(serde_json::to_value(server_capabilities).unwrap())
-            .map_err(|e| Error::Lsp(format!("Failed to initialize: {}", e)))?;
+            .map_err(|e| Error::Lsp(format!("Failed to initialize: {e}")))?;
 
         // Extract workspace root
         if let Ok(params) = serde_json::from_value::<InitializeParams>(initialization_params) {
@@ -52,9 +56,38 @@ impl LspServer {
                         // Start background indexing
                         let index = self.index.clone();
                         let root = path.clone();
+                        let root_for_watcher = path.clone();
+
+                        // Create the index updater and file watcher
+                        let updater = Arc::new(IndexUpdater::new(
+                            self.index.clone(),
+                            root_for_watcher.clone(),
+                        ));
+                        let watcher_config = WatcherConfig::default();
+
+                        match FileWatcher::new(watcher_config, updater) {
+                            Ok(mut watcher) => {
+                                // Start watching the workspace
+                                if let Err(e) = watcher.watch(&root_for_watcher) {
+                                    tracing::error!("Failed to start file watcher: {}", e);
+                                } else {
+                                    tracing::info!(
+                                        "File watcher started for workspace: {}",
+                                        root_for_watcher.display()
+                                    );
+                                    self._file_watcher = Some(watcher);
+                                }
+                            }
+                            Err(e) => {
+                                tracing::error!("Failed to create file watcher: {}", e);
+                            }
+                        }
+
                         thread::spawn(move || {
                             if let Err(e) = index.index_workspace(&root) {
                                 tracing::error!("Failed to index workspace: {}", e);
+                            } else {
+                                tracing::info!("Initial workspace indexing completed");
                             }
                         });
                     }
@@ -138,7 +171,7 @@ impl LspServer {
                                             result: None,
                                             error: Some(lsp_server::ResponseError {
                                                 code: lsp_server::ErrorCode::InternalError as i32,
-                                                message: format!("Error: {}", e),
+                                                message: format!("Error: {e}"),
                                                 data: None,
                                             }),
                                         };
@@ -155,7 +188,7 @@ impl LspServer {
                                     result: None,
                                     error: Some(lsp_server::ResponseError {
                                         code: lsp_server::ErrorCode::InvalidParams as i32,
-                                        message: format!("Invalid params: {}", e),
+                                        message: format!("Invalid params: {e}"),
                                         data: None,
                                     }),
                                 };

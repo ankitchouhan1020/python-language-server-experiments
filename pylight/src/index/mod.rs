@@ -1,6 +1,7 @@
 //! Symbol indexing and storage
 
-mod files;
+pub mod files;
+pub mod updater;
 
 use crate::{PythonParser, Result, Symbol};
 use rayon::prelude::*;
@@ -11,6 +12,13 @@ use std::sync::{Arc, RwLock};
 pub struct SymbolIndex {
     symbols: Arc<RwLock<HashMap<PathBuf, Vec<Arc<Symbol>>>>>,
     all_symbols: Arc<RwLock<Vec<Arc<Symbol>>>>,
+    file_metadata: Arc<RwLock<HashMap<PathBuf, FileMetadata>>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FileMetadata {
+    pub last_modified: std::time::SystemTime,
+    pub symbol_count: usize,
 }
 
 impl SymbolIndex {
@@ -18,16 +26,34 @@ impl SymbolIndex {
         Self {
             symbols: Arc::new(RwLock::new(HashMap::new())),
             all_symbols: Arc::new(RwLock::new(Vec::new())),
+            file_metadata: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
     pub fn add_file(&self, path: PathBuf, symbols: Vec<Symbol>) -> Result<()> {
+        // Canonicalize the path for consistent comparison
+        let canonical_path = path.canonicalize().unwrap_or(path.clone());
+
         let mut file_symbols = self.symbols.write().unwrap();
         let mut all = self.all_symbols.write().unwrap();
+        let mut metadata = self.file_metadata.write().unwrap();
 
         // Remove old symbols for this file if any
-        if let Some(_old_symbols) = file_symbols.get(&path) {
-            all.retain(|s| s.file_path != path);
+        if let Some(_old_symbols) = file_symbols.get(&canonical_path) {
+            all.retain(|s| s.file_path != canonical_path);
+        }
+
+        // Update metadata
+        if let Ok(file_metadata) = std::fs::metadata(&canonical_path) {
+            if let Ok(modified) = file_metadata.modified() {
+                metadata.insert(
+                    canonical_path.clone(),
+                    FileMetadata {
+                        last_modified: modified,
+                        symbol_count: symbols.len(),
+                    },
+                );
+            }
         }
 
         // Convert symbols to Arc
@@ -35,17 +61,22 @@ impl SymbolIndex {
 
         // Add new symbols
         all.extend(arc_symbols.clone());
-        file_symbols.insert(path, arc_symbols);
+        file_symbols.insert(canonical_path, arc_symbols);
 
         Ok(())
     }
 
     pub fn remove_file(&self, path: &Path) -> Result<()> {
+        // Canonicalize the path for consistent comparison
+        let canonical_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+
         let mut file_symbols = self.symbols.write().unwrap();
         let mut all = self.all_symbols.write().unwrap();
+        let mut metadata = self.file_metadata.write().unwrap();
 
-        file_symbols.remove(path);
-        all.retain(|s| s.file_path != path);
+        file_symbols.remove(&canonical_path);
+        all.retain(|s| s.file_path != canonical_path);
+        metadata.remove(&canonical_path);
 
         Ok(())
     }
@@ -55,23 +86,121 @@ impl SymbolIndex {
     }
 
     pub fn get_file_symbols(&self, path: &Path) -> Option<Vec<Arc<Symbol>>> {
-        self.symbols.read().unwrap().get(path).cloned()
+        let canonical_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+        self.symbols.read().unwrap().get(&canonical_path).cloned()
     }
 
     pub fn clear(&self) {
         self.symbols.write().unwrap().clear();
         self.all_symbols.write().unwrap().clear();
+        self.file_metadata.write().unwrap().clear();
+    }
+
+    /// Get the total number of indexed files
+    pub fn get_file_count(&self) -> usize {
+        self.symbols.read().unwrap().len()
+    }
+
+    /// Check if a file is already indexed
+    pub fn has_file(&self, path: &Path) -> bool {
+        let canonical_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+        self.symbols.read().unwrap().contains_key(&canonical_path)
+    }
+
+    /// Get metadata for a file
+    pub fn get_file_metadata(&self, path: &Path) -> Option<FileMetadata> {
+        let canonical_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+        self.file_metadata
+            .read()
+            .unwrap()
+            .get(&canonical_path)
+            .cloned()
+    }
+
+    /// Update specific files without full re-index
+    pub fn update_files_batch(
+        &self,
+        updates: Vec<(PathBuf, Vec<Symbol>)>,
+    ) -> Result<(usize, usize)> {
+        let mut file_symbols = self.symbols.write().unwrap();
+        let mut all = self.all_symbols.write().unwrap();
+        let mut metadata = self.file_metadata.write().unwrap();
+
+        let mut updated_files = 0;
+        let mut total_symbols = 0;
+
+        for (path, symbols) in updates {
+            // Remove old symbols for this file if any
+            if file_symbols.contains_key(&path) {
+                all.retain(|s| s.file_path != path);
+            }
+
+            // Update metadata
+            if let Ok(file_metadata) = std::fs::metadata(&path) {
+                if let Ok(modified) = file_metadata.modified() {
+                    metadata.insert(
+                        path.clone(),
+                        FileMetadata {
+                            last_modified: modified,
+                            symbol_count: symbols.len(),
+                        },
+                    );
+                }
+            }
+
+            // Convert symbols to Arc
+            let arc_symbols: Vec<Arc<Symbol>> = symbols.into_iter().map(Arc::new).collect();
+            total_symbols += arc_symbols.len();
+
+            // Add new symbols
+            all.extend(arc_symbols.clone());
+            file_symbols.insert(path, arc_symbols);
+            updated_files += 1;
+        }
+
+        Ok((updated_files, total_symbols))
+    }
+
+    /// Create a new index from scratch and swap it atomically
+    pub fn swap_index(&self, new_index: &SymbolIndex) {
+        // Acquire all locks in a consistent order to avoid deadlocks
+        let mut symbols = self.symbols.write().unwrap();
+        let mut all_symbols = self.all_symbols.write().unwrap();
+        let mut metadata = self.file_metadata.write().unwrap();
+
+        let new_symbols = new_index.symbols.read().unwrap();
+        let new_all = new_index.all_symbols.read().unwrap();
+        let new_metadata = new_index.file_metadata.read().unwrap();
+
+        // Swap the contents
+        *symbols = new_symbols.clone();
+        *all_symbols = new_all.clone();
+        *metadata = new_metadata.clone();
     }
 
     /// Add multiple files in a single batch operation to minimize lock contention
     pub fn add_files_batch(&self, files: Vec<(PathBuf, Vec<Symbol>)>) -> Result<()> {
         let mut file_symbols = self.symbols.write().unwrap();
         let mut all = self.all_symbols.write().unwrap();
+        let mut metadata = self.file_metadata.write().unwrap();
 
         for (path, symbols) in files {
             // Remove old symbols for this file if any
             if file_symbols.contains_key(&path) {
                 all.retain(|s| s.file_path != path);
+            }
+
+            // Update metadata
+            if let Ok(file_metadata) = std::fs::metadata(&path) {
+                if let Ok(modified) = file_metadata.modified() {
+                    metadata.insert(
+                        path.clone(),
+                        FileMetadata {
+                            last_modified: modified,
+                            symbol_count: symbols.len(),
+                        },
+                    );
+                }
             }
 
             // Convert symbols to Arc
@@ -131,7 +260,13 @@ impl SymbolIndex {
                         }
                     },
                     Err(e) => {
-                        tracing::warn!("Failed to read {}: {}", path.display(), e);
+                        // Only warn for errors other than "file not found" since that's expected
+                        // during rapid file system changes (e.g., git operations)
+                        if e.kind() != std::io::ErrorKind::NotFound {
+                            tracing::warn!("Failed to read {}: {}", path.display(), e);
+                        } else {
+                            tracing::debug!("File no longer exists: {}", path.display());
+                        }
                         None
                     }
                 }

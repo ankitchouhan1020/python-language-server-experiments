@@ -1,38 +1,39 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use pylight::{SearchEngine, Symbol, SymbolKind};
 use std::path::PathBuf;
+use std::sync::Arc;
 
-fn generate_symbols(count: usize) -> Vec<Symbol> {
+fn generate_symbols(count: usize) -> Vec<Arc<Symbol>> {
     let mut symbols = Vec::new();
 
     for i in 0..count {
         if i % 3 == 0 {
-            symbols.push(Symbol::new(
-                format!("function_{}", i),
+            symbols.push(Arc::new(Symbol::new(
+                format!("function_{i}"),
                 SymbolKind::Function,
                 PathBuf::from(format!("file{}.py", i % 10)),
                 i,
                 0,
-            ));
+            )));
         } else if i % 3 == 1 {
-            symbols.push(Symbol::new(
-                format!("Class_{}", i),
+            symbols.push(Arc::new(Symbol::new(
+                format!("Class_{i}"),
                 SymbolKind::Class,
                 PathBuf::from(format!("file{}.py", i % 10)),
                 i,
                 0,
-            ));
+            )));
         } else {
-            symbols.push(
+            symbols.push(Arc::new(
                 Symbol::new(
-                    format!("method_{}", i),
+                    format!("method_{i}"),
                     SymbolKind::Method,
                     PathBuf::from(format!("file{}.py", i % 10)),
                     i,
                     4,
                 )
                 .with_container(format!("Class_{}", i - 1)),
-            );
+            ));
         }
     }
 

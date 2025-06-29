@@ -126,8 +126,7 @@ fn test_decorated_symbols() {
     for name in decorated_names {
         assert!(
             symbols.iter().any(|s| s.name == name),
-            "Missing decorated function: {}",
-            name
+            "Missing decorated function: {name}"
         );
     }
 }

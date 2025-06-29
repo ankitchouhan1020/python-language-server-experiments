@@ -1,3 +1,5 @@
+mod test_file_watcher;
+mod test_ignore_dirs;
 mod test_index;
 mod test_lsp;
 mod test_search;
