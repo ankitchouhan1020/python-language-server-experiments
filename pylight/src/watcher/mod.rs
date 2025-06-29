@@ -221,6 +221,21 @@ impl FileWatcher {
         event_handler: &Arc<dyn FileEventHandler + Send + Sync>,
         pending_events: &mut HashSet<(PathBuf, bool)>,
     ) {
+        let total_events = pending_events.len();
+
+        // If we have many changes (including removals), just trigger a bulk re-index
+        if total_events >= config.batch_threshold {
+            info!(
+                "Detected {} file changes (including removals), triggering bulk re-index",
+                total_events
+            );
+            // For bulk changes, we don't need to pass the paths since we'll do a full re-index
+            event_handler.handle_event(FileEvent::BulkChange(Vec::new()));
+            pending_events.clear();
+            return;
+        }
+
+        // Otherwise, handle changes individually
         let mut changed_paths = HashSet::new();
         let mut removed_paths = HashSet::new();
 
@@ -239,23 +254,10 @@ impl FileWatcher {
             event_handler.handle_event(FileEvent::FileRemoved(path));
         }
 
-        // Handle changed files
-        let changed_files: Vec<PathBuf> = changed_paths.into_iter().collect();
-        if !changed_files.is_empty() {
-            if changed_files.len() >= config.batch_threshold {
-                // Many files changed - trigger bulk update
-                info!(
-                    "Detected {} file changes, triggering bulk re-index",
-                    changed_files.len()
-                );
-                event_handler.handle_event(FileEvent::BulkChange(changed_files));
-            } else {
-                // Few files changed - update individually
-                for path in changed_files {
-                    info!("File changed: {}", path.display());
-                    event_handler.handle_event(FileEvent::FileChanged(path));
-                }
-            }
+        // Handle changed files individually
+        for path in changed_paths {
+            info!("File changed: {}", path.display());
+            event_handler.handle_event(FileEvent::FileChanged(path));
         }
     }
 

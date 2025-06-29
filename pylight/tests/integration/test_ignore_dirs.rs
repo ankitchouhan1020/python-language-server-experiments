@@ -111,8 +111,8 @@ fn test_file_watcher_ignores_directories() {
     // Add a file to a normal directory
     fs::write(src_path.join("utils.py"), "def utils_func():\n    pass\n").unwrap();
 
-    // Wait for debounce
-    thread::sleep(Duration::from_millis(200));
+    // Wait for debounce and processing
+    thread::sleep(Duration::from_millis(500));
 
     // Check that only the non-ignored file was indexed
     let all_symbols = index.get_all_symbols();

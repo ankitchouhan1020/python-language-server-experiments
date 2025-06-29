@@ -1,9 +1,9 @@
 //! Index update coordinator that handles file change events
 
 use crate::watcher::{FileEvent, FileEventHandler};
-use crate::{PythonParser, Result, Symbol, SymbolIndex};
+use crate::{PythonParser, Result, SymbolIndex};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::Instant;
 use tracing::{debug, error, info, warn};
@@ -15,15 +15,12 @@ enum UpdaterState {
     Idle,
     /// Currently processing a full re-index
     ReIndexing,
-    /// Processing incremental updates
-    Updating,
 }
 
 /// Manages index updates from file system events
 pub struct IndexUpdater {
     index: Arc<SymbolIndex>,
     state: Arc<RwLock<UpdaterState>>,
-    pending_updates: Arc<Mutex<Vec<FileEvent>>>,
     workspace_root: PathBuf,
 }
 
@@ -32,13 +29,20 @@ impl IndexUpdater {
         Self {
             index,
             state: Arc::new(RwLock::new(UpdaterState::Idle)),
-            pending_updates: Arc::new(Mutex::new(Vec::new())),
             workspace_root,
         }
     }
 
     /// Process a single file update
     fn process_file_update(&self, path: &Path) -> Result<()> {
+        // Check if the file should be ignored
+        use crate::ignore::IgnoreFilter;
+        let ignore_filter = IgnoreFilter::new(self.workspace_root.clone());
+        if ignore_filter.should_ignore(path) {
+            debug!("Ignoring file update for: {}", path.display());
+            return Ok(());
+        }
+
         let start = Instant::now();
 
         // Create a parser for this file
@@ -74,56 +78,6 @@ impl IndexUpdater {
         }
     }
 
-    /// Process multiple file updates
-    fn process_file_updates(&self, paths: &[PathBuf]) -> Result<()> {
-        let start = Instant::now();
-
-        // Process files in parallel
-        let updates: Vec<(PathBuf, Vec<Symbol>)> = paths
-            .iter()
-            .filter_map(|path| {
-                let mut parser = match PythonParser::new() {
-                    Ok(p) => p,
-                    Err(e) => {
-                        warn!("Failed to create parser: {}", e);
-                        return None;
-                    }
-                };
-
-                match std::fs::read_to_string(path) {
-                    Ok(content) => match parser.parse_file(path, &content) {
-                        Ok(symbols) => Some((path.clone(), symbols)),
-                        Err(e) => {
-                            warn!("Failed to parse {}: {}", path.display(), e);
-                            None
-                        }
-                    },
-                    Err(e) => {
-                        // Only warn for errors other than "file not found" since that's expected
-                        // during rapid file system changes (e.g., git operations)
-                        if e.kind() != std::io::ErrorKind::NotFound {
-                            warn!("Failed to read {}: {}", path.display(), e);
-                        } else {
-                            debug!("File no longer exists: {}", path.display());
-                        }
-                        None
-                    }
-                }
-            })
-            .collect();
-
-        let (updated_count, symbol_count) = self.index.update_files_batch(updates)?;
-
-        info!(
-            "Updated {} files with {} symbols in {:.2}ms",
-            updated_count,
-            symbol_count,
-            start.elapsed().as_secs_f64() * 1000.0
-        );
-
-        Ok(())
-    }
-
     /// Perform a full re-index of the workspace
     fn perform_full_reindex(&self) -> Result<()> {
         info!("Starting full workspace re-index");
@@ -146,92 +100,40 @@ impl IndexUpdater {
         Ok(())
     }
 
-    /// Process pending updates
-    fn process_pending_updates(&self) {
-        let events = {
-            let mut pending = self.pending_updates.lock().unwrap();
-            std::mem::take(&mut *pending)
-        };
-
-        if !events.is_empty() {
-            info!("Processing {} pending file events", events.len());
-            for event in events {
-                self.handle_event_internal(event);
-            }
-        }
-    }
-
     /// Internal event handler
     fn handle_event_internal(&self, event: FileEvent) {
-        // Check if we're already processing something
-        let current_state = *self.state.read().unwrap();
-
-        match current_state {
-            UpdaterState::ReIndexing => {
-                // Queue the event for later
-                self.pending_updates.lock().unwrap().push(event);
-                return;
-            }
-            UpdaterState::Updating => {
-                // Allow concurrent updates for now
-                // In the future, we might want to queue these as well
-            }
-            UpdaterState::Idle => {}
-        }
-
         match event {
             FileEvent::FileChanged(path) => {
-                *self.state.write().unwrap() = UpdaterState::Updating;
-
                 if let Err(e) = self.process_file_update(&path) {
                     error!("Failed to update file {}: {}", path.display(), e);
                 }
-
-                *self.state.write().unwrap() = UpdaterState::Idle;
             }
-            FileEvent::BulkChange(paths) => {
+            FileEvent::BulkChange(_) => {
+                // For bulk changes, always do a full re-index
+                // This is simpler and avoids complex state management
+                info!("Bulk change detected, performing full re-index");
+
+                // Check if we're already re-indexing
+                let state = self.state.read().unwrap();
+                if *state == UpdaterState::ReIndexing {
+                    info!("Already re-indexing, skipping bulk change event");
+                    return;
+                }
+                drop(state);
+
+                // Set state to re-indexing
                 *self.state.write().unwrap() = UpdaterState::ReIndexing;
 
-                // Decide whether to do incremental updates or full re-index
-                let total_indexed = self.index.get_file_count();
-                let changed_ratio = paths.len() as f64 / total_indexed.max(1) as f64;
-
-                if changed_ratio > 0.5 {
-                    // More than 50% of files changed, do a full re-index
-                    info!(
-                        "Large change detected ({} files, {:.0}% of total), performing full re-index",
-                        paths.len(),
-                        changed_ratio * 100.0
-                    );
-
-                    if let Err(e) = self.perform_full_reindex() {
-                        error!("Failed to perform full re-index: {}", e);
-                    }
-                } else {
-                    // Do incremental updates
-                    info!(
-                        "Bulk change detected ({} files), performing incremental updates",
-                        paths.len()
-                    );
-
-                    if let Err(e) = self.process_file_updates(&paths) {
-                        error!("Failed to process bulk updates: {}", e);
-                    }
+                if let Err(e) = self.perform_full_reindex() {
+                    error!("Failed to perform full re-index: {}", e);
                 }
 
                 *self.state.write().unwrap() = UpdaterState::Idle;
-
-                // Process any pending updates that came in during re-indexing
-                self.process_pending_updates();
             }
             FileEvent::FileRemoved(path) => {
-                *self.state.write().unwrap() = UpdaterState::Updating;
-
                 if let Err(e) = self.index.remove_file(&path) {
                     error!("Failed to remove file {}: {}", path.display(), e);
                 }
-
-                *self.state.write().unwrap() = UpdaterState::Idle;
             }
         }
     }
@@ -239,26 +141,51 @@ impl IndexUpdater {
 
 impl FileEventHandler for IndexUpdater {
     fn handle_event(&self, event: FileEvent) {
-        // Clone what we need for the thread
-        let updater = Arc::new(Self {
-            index: self.index.clone(),
-            state: self.state.clone(),
-            pending_updates: self.pending_updates.clone(),
-            workspace_root: self.workspace_root.clone(),
-        });
+        // For bulk changes, handle directly in current thread to avoid race conditions
+        // For individual file changes, spawn a thread to avoid blocking the watcher
+        match &event {
+            FileEvent::BulkChange(_) => {
+                // Handle bulk changes synchronously to ensure proper state management
+                self.handle_event_internal(event);
+            }
+            _ => {
+                // Clone what we need for the thread
+                let updater = Arc::new(Self {
+                    index: self.index.clone(),
+                    state: self.state.clone(),
+                    workspace_root: self.workspace_root.clone(),
+                });
 
-        // Spawn a thread to handle the event
-        thread::spawn(move || {
-            updater.handle_event_internal(event);
-        });
+                // Spawn a thread to handle individual file events
+                thread::spawn(move || {
+                    updater.handle_event_internal(event);
+                });
+            }
+        }
     }
 
     fn should_watch(&self, path: &Path) -> bool {
-        // Only watch Python files
-        path.extension()
+        // Only watch Python files that are not ignored
+        let is_python = path
+            .extension()
             .and_then(|s| s.to_str())
             .map(|s| s == "py")
-            .unwrap_or(false)
+            .unwrap_or(false);
+
+        if !is_python {
+            return false;
+        }
+
+        // Check if the file should be ignored
+        use crate::ignore::IgnoreFilter;
+        let ignore_filter = IgnoreFilter::new(self.workspace_root.clone());
+        let should_ignore = ignore_filter.should_ignore(path);
+
+        if should_ignore {
+            debug!("Ignoring watch for: {}", path.display());
+        }
+
+        !should_ignore
     }
 
     fn workspace_root(&self) -> &Path {
