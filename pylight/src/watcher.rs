@@ -1,6 +1,6 @@
 //! File system watcher with debouncing support
 
-use crate::ignore::IgnoreFilter;
+use crate::file_filter::IgnoreFilter;
 use crate::Result;
 use notify::{Event, EventKind, RecursiveMode, Watcher};
 use std::collections::HashSet;

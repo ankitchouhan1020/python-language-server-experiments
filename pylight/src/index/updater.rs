@@ -36,7 +36,7 @@ impl IndexUpdater {
     /// Process a single file update
     fn process_file_update(&self, path: &Path) -> Result<()> {
         // Check if the file should be ignored
-        use crate::ignore::IgnoreFilter;
+        use crate::file_filter::IgnoreFilter;
         let ignore_filter = IgnoreFilter::new(self.workspace_root.clone());
         if ignore_filter.should_ignore(path) {
             debug!("Ignoring file update for: {}", path.display());
@@ -177,7 +177,7 @@ impl FileEventHandler for IndexUpdater {
         }
 
         // Check if the file should be ignored
-        use crate::ignore::IgnoreFilter;
+        use crate::file_filter::IgnoreFilter;
         let ignore_filter = IgnoreFilter::new(self.workspace_root.clone());
         let should_ignore = ignore_filter.should_ignore(path);
 

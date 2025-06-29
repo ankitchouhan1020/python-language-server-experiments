@@ -1,4 +1,4 @@
-//! Ignore management using gitignore files when available
+//! File filtering management using gitignore files when available
 
 use ignore::gitignore::GitignoreBuilder;
 use std::path::{Path, PathBuf};

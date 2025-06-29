@@ -4,7 +4,7 @@
 //! using tree-sitter for parsing and fuzzy matching for search.
 
 pub mod error;
-pub mod ignore;
+pub mod file_filter;
 pub mod index;
 pub mod lsp;
 pub mod parser;

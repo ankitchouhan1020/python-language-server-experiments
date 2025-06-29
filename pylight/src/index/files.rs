@@ -1,6 +1,6 @@
 //! File operations for the Python Language Server
 
-use crate::ignore::IgnoreFilter;
+use crate::file_filter::IgnoreFilter;
 use ignore::WalkBuilder;
 use std::path::PathBuf;
 
