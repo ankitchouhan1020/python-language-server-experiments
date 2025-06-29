@@ -114,21 +114,29 @@ impl IgnoreFilter {
             path
         };
 
+        // For files, check if any parent directory should be ignored
+        // This is important for files like .venv/test.py
+        if !path.is_dir() {
+            // Check each parent directory component
+            for ancestor in check_path.ancestors() {
+                if ancestor.as_os_str().is_empty() {
+                    continue;
+                }
+
+                // Check if this directory component should be ignored
+                if self.matcher.matched(ancestor, true).is_ignore() {
+                    debug!(
+                        "Parent directory {:?} is ignored, so ignoring {:?}",
+                        ancestor, path
+                    );
+                    return true;
+                }
+            }
+        }
+
         // Check the path itself
         if self.matcher.matched(check_path, path.is_dir()).is_ignore() {
             return true;
-        }
-
-        // For files, also check if any parent directory should be ignored
-        if !path.is_dir() {
-            let mut current = check_path;
-            while let Some(parent) = current.parent() {
-                if !parent.as_os_str().is_empty() && self.matcher.matched(parent, true).is_ignore()
-                {
-                    return true;
-                }
-                current = parent;
-            }
         }
 
         false
@@ -238,6 +246,69 @@ mod tests {
 
         // VCS dirs are still always ignored
         assert!(filter.should_ignore(&temp_dir.path().join(".git")));
+    }
+
+    #[test]
+    fn test_files_in_ignored_directories() {
+        let temp_dir = TempDir::new().unwrap();
+        let filter = IgnoreFilter::new(temp_dir.path().to_path_buf());
+
+        // Test that files inside ignored directories are also ignored
+        assert!(filter.should_ignore(&temp_dir.path().join(".venv/test.py")));
+        assert!(filter.should_ignore(&temp_dir.path().join("__pycache__/module.pyc")));
+        assert!(filter.should_ignore(&temp_dir.path().join(".git/config")));
+        assert!(filter.should_ignore(&temp_dir.path().join("node_modules/package/index.js")));
+
+        // But files in non-ignored directories should not be ignored
+        assert!(!filter.should_ignore(&temp_dir.path().join("src/main.py")));
+        assert!(!filter.should_ignore(&temp_dir.path().join("tests/test_main.py")));
+    }
+
+    #[test]
+    fn test_absolute_paths_in_ignored_directories() {
+        let temp_dir = TempDir::new().unwrap();
+        let workspace_root = temp_dir.path().canonicalize().unwrap();
+        let filter = IgnoreFilter::new(workspace_root.clone());
+
+        // Create actual directories
+        fs::create_dir(workspace_root.join(".venv")).unwrap();
+        fs::create_dir(workspace_root.join(".git")).unwrap();
+        fs::create_dir(workspace_root.join("src")).unwrap();
+
+        // Test with absolute paths (as file watcher would provide)
+        let venv_file = workspace_root.join(".venv/test.py");
+        let git_file = workspace_root.join(".git/test.py");
+        let src_file = workspace_root.join("src/main.py");
+
+        println!("Testing absolute paths:");
+        println!(
+            "  .venv file: {} -> should_ignore: {}",
+            venv_file.display(),
+            filter.should_ignore(&venv_file)
+        );
+        println!(
+            "  .git file: {} -> should_ignore: {}",
+            git_file.display(),
+            filter.should_ignore(&git_file)
+        );
+        println!(
+            "  src file: {} -> should_ignore: {}",
+            src_file.display(),
+            filter.should_ignore(&src_file)
+        );
+
+        assert!(
+            filter.should_ignore(&venv_file),
+            ".venv/test.py should be ignored"
+        );
+        assert!(
+            filter.should_ignore(&git_file),
+            ".git/test.py should be ignored"
+        );
+        assert!(
+            !filter.should_ignore(&src_file),
+            "src/main.py should not be ignored"
+        );
     }
 
     #[test]

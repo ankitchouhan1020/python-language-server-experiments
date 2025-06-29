@@ -104,6 +104,7 @@ impl IndexUpdater {
     fn handle_event_internal(&self, event: FileEvent) {
         match event {
             FileEvent::FileChanged(path) => {
+                // Process the file change
                 if let Err(e) = self.process_file_update(&path) {
                     error!("Failed to update file {}: {}", path.display(), e);
                 }
