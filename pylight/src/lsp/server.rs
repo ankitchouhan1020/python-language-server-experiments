@@ -5,9 +5,10 @@ use crate::watcher::{FileWatcher, WatcherConfig};
 use crate::{Error, Result, SearchEngine, SymbolIndex};
 use lsp_server::{Connection, Message, RequestId, Response};
 use lsp_types::{InitializeParams, ServerCapabilities, WorkspaceSymbolParams};
+use parking_lot::Mutex;
 use std::collections::HashSet;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread;
 
 pub struct LspServer {
@@ -111,78 +112,94 @@ impl LspServer {
                         match serde_json::from_value::<WorkspaceSymbolParams>(req.params) {
                             Ok(params) => {
                                 // Check if request was already cancelled
-                                let is_cancelled = self
-                                    .cancelled_requests
-                                    .lock()
-                                    .unwrap()
-                                    .contains(&request_id);
+                                let is_cancelled =
+                                    self.cancelled_requests.lock().contains(&request_id);
                                 if is_cancelled {
                                     tracing::info!(
                                         "Request {} was cancelled before processing",
                                         request_id
                                     );
-                                    self.cancelled_requests.lock().unwrap().remove(&request_id);
+                                    self.cancelled_requests.lock().remove(&request_id);
                                     continue;
                                 }
 
+                                // Clone everything needed for the spawned thread
                                 let query = params.query.clone();
                                 let cancelled_requests = self.cancelled_requests.clone();
                                 let req_id_for_check = request_id.clone();
+                                let req_id_for_log = request_id.clone();
+                                let req_id_for_cleanup = request_id.clone();
+                                let index = self.index.clone();
+                                let search_engine = self.search_engine.clone();
+                                let connection_sender = self.connection.sender.clone();
+                                let cancelled_requests_cleanup = self.cancelled_requests.clone();
 
-                                match super::handlers::handle_workspace_symbol(
-                                    params,
-                                    self.index.clone(),
-                                    self.search_engine.clone(),
-                                    cancelled_requests,
-                                    req_id_for_check,
-                                ) {
-                                    Ok(symbols) => {
-                                        let duration = start.elapsed();
-                                        tracing::info!(
-                                            "Request {} (workspace/symbol '{}') completed in {:?} - {} results",
-                                            request_id,
-                                            query,
-                                            duration,
-                                            symbols.len()
-                                        );
+                                // Spawn thread to handle the request asynchronously
+                                // This allows the main loop to continue processing messages (like cancellations)
+                                // while the search is running
+                                thread::Builder::new()
+                                    .name(format!("lsp-request-{req_id_for_log}"))
+                                    .spawn(move || {
+                                    let result = super::handlers::handle_workspace_symbol(
+                                        params,
+                                        index,
+                                        search_engine,
+                                        cancelled_requests,
+                                        req_id_for_check,
+                                    );
 
-                                        let resp = Response {
-                                            id: req.id,
-                                            result: Some(serde_json::to_value(symbols).unwrap()),
-                                            error: None,
-                                        };
-                                        self.connection
-                                            .sender
-                                            .send(Message::Response(resp))
-                                            .unwrap();
+                                    match result {
+                                        Ok(symbols) => {
+                                            let duration = start.elapsed();
+                                            tracing::info!(
+                                                "Request {} (workspace/symbol '{}') completed in {:?} - {} results",
+                                                req_id_for_log,
+                                                query,
+                                                duration,
+                                                symbols.len()
+                                            );
+
+                                            let resp = Response {
+                                                id: req.id,
+                                                result: Some(serde_json::to_value(symbols).unwrap()),
+                                                error: None,
+                                            };
+                                            if let Err(e) = connection_sender.send(Message::Response(resp)) {
+                                                tracing::error!("Failed to send response: {}", e);
+                                            }
+                                        }
+                                        Err(e) => {
+                                            let duration = start.elapsed();
+                                            tracing::error!(
+                                                "Request {} (workspace/symbol '{}') failed in {:?} - {}",
+                                                req_id_for_log,
+                                                query,
+                                                duration,
+                                                e
+                                            );
+
+                                            let resp = Response {
+                                                id: req.id,
+                                                result: None,
+                                                error: Some(lsp_server::ResponseError {
+                                                    code: lsp_server::ErrorCode::InternalError as i32,
+                                                    message: format!("Error: {e}"),
+                                                    data: None,
+                                                }),
+                                            };
+                                            if let Err(e) = connection_sender.send(Message::Response(resp)) {
+                                                tracing::error!("Failed to send error response: {}", e);
+                                            }
+                                        }
                                     }
-                                    Err(e) => {
-                                        let duration = start.elapsed();
-                                        tracing::error!(
-                                            "Request {} (workspace/symbol '{}') failed in {:?} - {}",
-                                            request_id,
-                                            query,
-                                            duration,
-                                            e
-                                        );
 
-                                        let resp = Response {
-                                            id: req.id,
-                                            result: None,
-                                            error: Some(lsp_server::ResponseError {
-                                                code: lsp_server::ErrorCode::InternalError as i32,
-                                                message: format!("Error: {e}"),
-                                                data: None,
-                                            }),
-                                        };
-                                        self.connection
-                                            .sender
-                                            .send(Message::Response(resp))
-                                            .unwrap();
-                                    }
-                                }
+                                    // Clean up cancelled request tracking
+                                    cancelled_requests_cleanup.lock().remove(&req_id_for_cleanup);
+                                })
+                                .expect("Failed to spawn request handler thread");
                             }
                             Err(e) => {
+                                // Parameter parsing error - respond immediately
                                 let resp = Response {
                                     id: req.id,
                                     result: None,
@@ -216,7 +233,7 @@ impl LspServer {
 
                         if let Ok(params) = serde_json::from_value::<CancelParams>(notif.params) {
                             tracing::info!("Received cancel request for id: {:?}", params.id);
-                            self.cancelled_requests.lock().unwrap().insert(params.id);
+                            self.cancelled_requests.lock().insert(params.id);
                         }
                     }
                 }

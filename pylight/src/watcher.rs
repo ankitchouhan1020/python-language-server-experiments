@@ -2,10 +2,10 @@
 
 use crate::file_filter::IgnoreFilter;
 use crate::Result;
+use crossbeam_channel::{self, Receiver, RecvTimeoutError, Sender};
 use notify::{Event, EventKind, RecursiveMode, Watcher};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -71,8 +71,8 @@ impl FileWatcher {
         config: WatcherConfig,
         event_handler: Arc<dyn FileEventHandler + Send + Sync>,
     ) -> Result<Self> {
-        let (event_tx, event_rx) = mpsc::channel::<notify::Event>();
-        let (shutdown_tx, shutdown_rx) = mpsc::channel::<()>();
+        let (event_tx, event_rx) = crossbeam_channel::unbounded::<notify::Event>();
+        let (shutdown_tx, shutdown_rx) = crossbeam_channel::bounded::<()>(1);
 
         // Create the ignore filter
         let ignore_filter = Arc::new(IgnoreFilter::new(
@@ -189,7 +189,7 @@ impl FileWatcher {
                         }
                     }
                 }
-                Err(mpsc::RecvTimeoutError::Timeout) => {
+                Err(RecvTimeoutError::Timeout) => {
                     // Timeout occurred, check if we need to process events
                     if !pending_events.is_empty() && last_event_time.elapsed() >= debounce_duration
                     {
@@ -201,7 +201,7 @@ impl FileWatcher {
                         first_event_time = None;
                     }
                 }
-                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                Err(RecvTimeoutError::Disconnected) => {
                     info!("Event channel disconnected, shutting down debouncer");
                     break;
                 }
@@ -294,8 +294,8 @@ impl Drop for FileWatcher {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use parking_lot::Mutex;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Mutex;
 
     #[allow(dead_code)]
     struct TestEventHandler {
@@ -305,7 +305,7 @@ mod tests {
 
     impl FileEventHandler for TestEventHandler {
         fn handle_event(&self, event: FileEvent) {
-            self.events.lock().unwrap().push(event);
+            self.events.lock().push(event);
             self.counter.fetch_add(1, Ordering::SeqCst);
         }
 
