@@ -180,7 +180,7 @@ impl FileWatcher {
                     // Check if we've exceeded the maximum timeout
                     if let Some(first_time) = first_event_time {
                         if first_time.elapsed() >= max_timeout {
-                            debug!(
+                            info!(
                                 "Maximum timeout reached, processing {} events",
                                 pending_events.len()
                             );
@@ -193,7 +193,7 @@ impl FileWatcher {
                     // Timeout occurred, check if we need to process events
                     if !pending_events.is_empty() && last_event_time.elapsed() >= debounce_duration
                     {
-                        debug!(
+                        info!(
                             "Debounce period expired, processing {} events",
                             pending_events.len()
                         );
