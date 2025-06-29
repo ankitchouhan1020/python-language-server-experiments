@@ -71,7 +71,7 @@ fn test_ignored_directories_not_indexed() {
 fn test_file_watcher_ignores_directories() {
     // Create a temporary directory
     let temp_dir = TempDir::new().unwrap();
-    let workspace_path = temp_dir.path().to_path_buf();
+    let workspace_path = temp_dir.path().canonicalize().unwrap();
 
     // Create initial files
     let src_path = workspace_path.join("src");
@@ -111,8 +111,8 @@ fn test_file_watcher_ignores_directories() {
     // Add a file to a normal directory
     fs::write(src_path.join("utils.py"), "def utils_func():\n    pass\n").unwrap();
 
-    // Wait for debounce and processing
-    thread::sleep(Duration::from_millis(500));
+    // Wait for debounce and processing (longer wait for thread pool)
+    thread::sleep(Duration::from_millis(1000));
 
     // Check that only the non-ignored file was indexed
     let all_symbols = index.get_all_symbols();

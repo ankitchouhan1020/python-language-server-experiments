@@ -4,7 +4,6 @@ use crate::watcher::{FileEvent, FileEventHandler};
 use crate::{PythonParser, Result, SymbolIndex};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
-use std::thread;
 use std::time::Instant;
 use tracing::{debug, error, info, warn};
 
@@ -22,23 +21,26 @@ pub struct IndexUpdater {
     index: Arc<SymbolIndex>,
     state: Arc<RwLock<UpdaterState>>,
     workspace_root: PathBuf,
+    ignore_filter: Arc<crate::file_filter::IgnoreFilter>,
 }
 
 impl IndexUpdater {
     pub fn new(index: Arc<SymbolIndex>, workspace_root: PathBuf) -> Self {
+        let ignore_filter = Arc::new(crate::file_filter::IgnoreFilter::new(
+            workspace_root.clone(),
+        ));
         Self {
             index,
             state: Arc::new(RwLock::new(UpdaterState::Idle)),
             workspace_root,
+            ignore_filter,
         }
     }
 
     /// Process a single file update
     fn process_file_update(&self, path: &Path) -> Result<()> {
         // Check if the file should be ignored
-        use crate::file_filter::IgnoreFilter;
-        let ignore_filter = IgnoreFilter::new(self.workspace_root.clone());
-        if ignore_filter.should_ignore(path) {
+        if self.ignore_filter.should_ignore(path) {
             debug!("Ignoring file update for: {}", path.display());
             return Ok(());
         }
@@ -143,22 +145,27 @@ impl IndexUpdater {
 impl FileEventHandler for IndexUpdater {
     fn handle_event(&self, event: FileEvent) {
         // For bulk changes, handle directly in current thread to avoid race conditions
-        // For individual file changes, spawn a thread to avoid blocking the watcher
+        // For individual file changes, use rayon thread pool to avoid blocking the watcher
         match &event {
             FileEvent::BulkChange(_) => {
                 // Handle bulk changes synchronously to ensure proper state management
                 self.handle_event_internal(event);
             }
             _ => {
-                // Clone what we need for the thread
-                let updater = Arc::new(Self {
-                    index: self.index.clone(),
-                    state: self.state.clone(),
-                    workspace_root: self.workspace_root.clone(),
-                });
+                // Clone what we need for the async task
+                let index = self.index.clone();
+                let state = self.state.clone();
+                let workspace_root = self.workspace_root.clone();
+                let ignore_filter = self.ignore_filter.clone();
 
-                // Spawn a thread to handle individual file events
-                thread::spawn(move || {
+                // Use rayon's thread pool instead of spawning new threads
+                rayon::spawn(move || {
+                    let updater = IndexUpdater {
+                        index,
+                        state,
+                        workspace_root,
+                        ignore_filter,
+                    };
                     updater.handle_event_internal(event);
                 });
             }
@@ -178,9 +185,7 @@ impl FileEventHandler for IndexUpdater {
         }
 
         // Check if the file should be ignored
-        use crate::file_filter::IgnoreFilter;
-        let ignore_filter = IgnoreFilter::new(self.workspace_root.clone());
-        let should_ignore = ignore_filter.should_ignore(path);
+        let should_ignore = self.ignore_filter.should_ignore(path);
 
         if should_ignore {
             debug!("Ignoring watch for: {}", path.display());
