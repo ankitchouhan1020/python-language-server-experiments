@@ -26,13 +26,20 @@
                 "pydance.parser": {
                     "type": "string",
                     "default": "ruff",
-                    "enum": ["ruff", "tree-sitter"],
+                    "enum": [
+                        "ruff",
+                        "tree-sitter"
+                    ],
                     "description": "Parser backend to use for Python code analysis"
                 },
                 "pydance.trace.server": {
                     "type": "string",
                     "default": "off",
-                    "enum": ["off", "messages", "verbose"],
+                    "enum": [
+                        "off",
+                        "messages",
+                        "verbose"
+                    ],
                     "description": "Traces the communication between VS Code and the language server"
                 },
                 "pydance.excludePatterns": {
@@ -47,12 +54,14 @@
         }
     },
     "scripts": {
-        "vscode:prepublish": "npm run compile",
-        "compile": "tsc -p ./",
-        "watch": "tsc -watch -p ./",
-        "pretest": "npm run compile",
+        "vscode:prepublish": "npm run package",
+        "compile": "node esbuild.js",
+        "watch": "node esbuild.js --watch",
+        "package": "node esbuild.js --production",
+        "compile:tests": "tsc -p ./",
+        "pretest": "npm run compile:tests",
         "test": "node ./out/test/runTest.js",
-        "test:integration": "npm run compile && node ./out/test/runIntegrationTest.js",
+        "test:integration": "npm run compile:tests && node ./out/test/runIntegrationTest.js",
         "lint": "eslint src --ext ts",
         "lint:fix": "eslint src --ext ts --fix",
         "format": "prettier --write \"src/**/*.ts\"",
@@ -62,13 +71,14 @@
         "vscode-languageclient": "^9.0.1"
     },
     "devDependencies": {
+        "@types/glob": "^8.1.0",
+        "@types/mocha": "^10.0.6",
         "@types/node": "^20.0.0",
         "@types/vscode": "^1.85.0",
-        "@types/mocha": "^10.0.6",
-        "@types/glob": "^8.1.0",
         "@typescript-eslint/eslint-plugin": "^6.0.0",
         "@typescript-eslint/parser": "^6.0.0",
         "@vscode/test-electron": "^2.3.9",
+        "esbuild": "^0.25.8",
         "eslint": "^8.0.0",
         "glob": "^8.1.0",
         "mocha": "^10.2.0",
