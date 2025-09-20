@@ -1,12 +1,12 @@
 //! Symbol search functionality
 
 use crate::symbols::Symbol;
-use fuzzy_matcher::skim::SkimMatcherV2;
-use fuzzy_matcher::FuzzyMatcher;
+use nucleo_matcher::pattern::{Atom, CaseMatching, Normalization};
+use nucleo_matcher::{Config, Matcher, Utf32Str};
 use std::sync::Arc;
 
 pub struct SearchEngine {
-    matcher: SkimMatcherV2,
+    matcher: Matcher,
 }
 
 #[derive(Debug)]
@@ -17,8 +17,10 @@ pub struct SearchResult {
 
 impl SearchEngine {
     pub fn new() -> Self {
+        let mut config = Config::DEFAULT;
+        config.normalize = true;
         Self {
-            matcher: SkimMatcherV2::default().smart_case().use_cache(true),
+            matcher: Matcher::new(config),
         }
     }
 
@@ -37,16 +39,26 @@ impl SearchEngine {
 
         let start_time = std::time::Instant::now();
 
+        // Create the search pattern with smart case matching
+        let pattern = Atom::parse(
+            query,
+            CaseMatching::Smart,
+            Normalization::Smart,
+        );
+
+        // Create a matcher instance for scoring
+        let mut matcher = self.matcher.clone();
+
         // First pass: collect fuzzy match results
         let mut results: Vec<SearchResult> = symbols
             .iter()
             .filter_map(|symbol| {
-                self.matcher
-                    .fuzzy_match(&symbol.name, query)
-                    .map(|score| SearchResult {
-                        symbol: Arc::clone(symbol),
-                        score,
-                    })
+                let mut buf = Vec::new();
+                let haystack = Utf32Str::new(&symbol.name, &mut buf);
+                pattern.score(haystack, &mut matcher).map(|score| SearchResult {
+                    symbol: Arc::clone(symbol),
+                    score: score as i64,
+                })
             })
             .collect();
 
