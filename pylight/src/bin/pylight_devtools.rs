@@ -120,8 +120,10 @@ fn main() {
                     }
                     Err(err) => {
                         error!("Failed to spawn pylight: {}", err);
-                        Response::from_string(json!({"status": "error", "message": err}).to_string())
-                            .with_status_code(500)
+                        Response::from_string(
+                            json!({"status": "error", "message": err}).to_string(),
+                        )
+                        .with_status_code(500)
                     }
                 };
                 request
