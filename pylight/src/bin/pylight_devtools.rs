@@ -29,6 +29,7 @@ fn default_parser() -> String {
 }
 
 #[derive(Serialize, Deserialize)]
+#[allow(dead_code)]
 struct SearchRequest {
     query: String,
 }
@@ -112,14 +113,16 @@ fn main() {
                 );
 
                 let result = spawn_pylight(&index_req.path, &index_req.parser, pylight.clone());
-                let response = if result.is_ok() {
-                    info!("Successfully spawned pylight for {}", index_req.path);
-                    Response::from_string(json!({"status": "success"}).to_string())
-                } else {
-                    let err = result.unwrap_err();
-                    error!("Failed to spawn pylight: {}", err);
-                    Response::from_string(json!({"status": "error", "message": err}).to_string())
-                        .with_status_code(500)
+                let response = match result {
+                    Ok(()) => {
+                        info!("Successfully spawned pylight for {}", index_req.path);
+                        Response::from_string(json!({"status": "success"}).to_string())
+                    }
+                    Err(err) => {
+                        error!("Failed to spawn pylight: {}", err);
+                        Response::from_string(json!({"status": "error", "message": err}).to_string())
+                            .with_status_code(500)
+                    }
                 };
                 request
                     .respond(
