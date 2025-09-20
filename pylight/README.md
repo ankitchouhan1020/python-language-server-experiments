@@ -27,8 +27,6 @@ pylight/
 └── benches/            # Performance benchmarks
 ```
 
-## Usage
-
 ## Build & Test
 
 ```bash
@@ -41,6 +39,8 @@ cargo test
 # Run benchmarks
 cargo bench
 ```
+
+## Usage
 
 ### As an LSP Server
 
