@@ -29,6 +29,19 @@ pylight/
 
 ## Usage
 
+## Build & Test
+
+```bash
+# Build in release mode
+cargo build --release
+
+# Run tests
+cargo test
+
+# Run benchmarks
+cargo bench
+```
+
 ### As an LSP Server
 
 ```bash
@@ -43,36 +56,24 @@ pylight
 pylight --standalone --directory /path/to/project --query "test"
 ```
 
-## Building
+## Local testing tool
 
-```bash
-# Build in release mode
-cargo build --release
+There is tool to help with development that opens a web page where you can try the symbol search outside of VSCode
 
-# Run tests
-cargo test
+Run this and open the webpage, enter the path to python code:
 
-# Run benchmarks
-cargo bench
+```
+cargo run --release --bin pylight_devtools
 ```
 
 ## Integration with VSCode
 
-The `pylight` LSP server is designed to work with the `pydance` VSCode extension. 
+The `pylight` LSP server is designed to work with the `pydance` VSCode extension.
 The extension will automatically start the language server when opening Python files.
-
-## Performance
-
-- Simple function parsing: ~7.7µs
-- Complex file parsing: ~72µs  
-- Scales linearly with file size
-- Efficient parallel processing for large codebases
 
 ## Development
 
-This project uses test-driven development:
-
-1. Write integration tests first (`tests/integration/`)
+1. Write integration tests (`tests/integration/`)
 2. Write unit tests for components (`src/*/tests.rs`)
 3. Implement functionality to pass tests
 4. Benchmark critical paths (`benches/`)

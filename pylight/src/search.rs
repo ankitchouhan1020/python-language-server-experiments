@@ -40,11 +40,7 @@ impl SearchEngine {
         let start_time = std::time::Instant::now();
 
         // Create the search pattern with smart case matching
-        let pattern = Atom::parse(
-            query,
-            CaseMatching::Smart,
-            Normalization::Smart,
-        );
+        let pattern = Atom::parse(query, CaseMatching::Smart, Normalization::Smart);
 
         // Create a matcher instance for scoring
         let mut matcher = self.matcher.clone();
@@ -55,10 +51,12 @@ impl SearchEngine {
             .filter_map(|symbol| {
                 let mut buf = Vec::new();
                 let haystack = Utf32Str::new(&symbol.name, &mut buf);
-                pattern.score(haystack, &mut matcher).map(|score| SearchResult {
-                    symbol: Arc::clone(symbol),
-                    score: score as i64,
-                })
+                pattern
+                    .score(haystack, &mut matcher)
+                    .map(|score| SearchResult {
+                        symbol: Arc::clone(symbol),
+                        score: score as i64,
+                    })
             })
             .collect();
 
