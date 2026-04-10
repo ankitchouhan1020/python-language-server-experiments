@@ -66,6 +66,7 @@ pub fn handle_workspace_symbol(
                         crate::SymbolKind::Class | crate::SymbolKind::NestedClass => {
                             LspSymbolKind::CLASS
                         }
+                        crate::SymbolKind::Variable => LspSymbolKind::VARIABLE,
                     },
                     tags: None,
                     location: Location {

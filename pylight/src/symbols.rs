@@ -10,6 +10,7 @@ pub enum SymbolKind {
     Method,
     NestedFunction,
     NestedClass,
+    Variable,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
