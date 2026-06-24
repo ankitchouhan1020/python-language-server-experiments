@@ -1,3 +1,4 @@
+import * as fs from "fs";
 import * as path from "path";
 import { runTests } from "@vscode/test-electron";
 
@@ -9,8 +10,14 @@ async function main() {
     // The path to test runner for integration tests
     const extensionTestsPath = path.resolve(__dirname, "./suite/index");
 
-    // The path to the test workspace - this ensures we have a proper workspace
-    const testWorkspace = path.resolve(__dirname, "../../src/testFixture");
+    // The path to the test workspace - this ensures we have a proper multi-root workspace
+    const testWorkspace = path.resolve(
+      __dirname,
+      "../../src/testFixture/multi-root.code-workspace"
+    );
+
+    const userDataDir = path.join("/tmp", `pydance-vscode-test-${process.pid}`);
+    fs.rmSync(userDataDir, { recursive: true, force: true });
 
     console.log("Running integration tests with workspace:", testWorkspace);
 
@@ -18,7 +25,7 @@ async function main() {
     await runTests({
       extensionDevelopmentPath,
       extensionTestsPath,
-      launchArgs: [testWorkspace],
+      launchArgs: [testWorkspace, "--user-data-dir", userDataDir],
       // Set environment variable to indicate integration test mode
       extensionTestsEnv: {
         INTEGRATION_TEST: "true",
