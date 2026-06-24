@@ -13,7 +13,7 @@ async function main() {
     // The path to the test workspace - this ensures we have a proper multi-root workspace
     const testWorkspace = path.resolve(
       __dirname,
-      "../../src/testFixture/multi-root.code-workspace"
+      "../../src/testWorkspaces/multi-root.code-workspace"
     );
 
     const userDataDir = path.join("/tmp", `pydance-vscode-test-${process.pid}`);
