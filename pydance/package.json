@@ -68,6 +68,7 @@
         "pretest": "npm run compile:tests",
         "test": "node ./out/test/runTest.js",
         "test:integration": "npm run compile:tests && node ./out/test/runIntegrationTest.js",
+        "test:integration:multi-root": "npm run compile:tests && node ./out/test/runMultiRootIntegrationTest.js",
         "lint": "eslint src --ext ts",
         "lint:fix": "eslint src --ext ts --fix",
         "format": "prettier --write \"src/**/*.ts\"",
