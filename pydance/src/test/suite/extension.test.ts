@@ -136,7 +136,18 @@ suite("Extension Test Suite", () => {
             )
           )
         ),
-        // Note: TEST_CONSTANT is not returned by the server when searching for "test"
+        new vscode.SymbolInformation(
+          "TEST_CONSTANT",
+          vscode.SymbolKind.Variable,
+          "",
+          new vscode.Location(
+            docUri,
+            new vscode.Range(
+              new vscode.Position(13, 0), // Line 14 (0-indexed)
+              new vscode.Position(13, 0)
+            )
+          )
+        ),
       ]);
     });
 

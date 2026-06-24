@@ -127,6 +127,95 @@ class MyClass:
     }
 
     #[test]
+    fn test_parse_simple_variable() {
+        let mut parser = PythonParser::new().unwrap();
+        let code = "MY_VAR = 42";
+        let symbols = parser.parse_file(Path::new("test.py"), code).unwrap();
+
+        assert_eq!(symbols.len(), 1);
+        assert_eq!(symbols[0].name, "MY_VAR");
+        assert_eq!(symbols[0].kind, SymbolKind::Variable);
+        assert_eq!(symbols[0].line, 1);
+    }
+
+    #[test]
+    fn test_parse_annotated_variable() {
+        let mut parser = PythonParser::new().unwrap();
+        let code = "name: str = \"hello\"";
+        let symbols = parser.parse_file(Path::new("test.py"), code).unwrap();
+
+        assert_eq!(symbols.len(), 1);
+        assert_eq!(symbols[0].name, "name");
+        assert_eq!(symbols[0].kind, SymbolKind::Variable);
+    }
+
+    #[test]
+    fn test_parse_tuple_unpacking() {
+        let mut parser = PythonParser::new().unwrap();
+        let code = "a, b = 1, 2";
+        let symbols = parser.parse_file(Path::new("test.py"), code).unwrap();
+
+        assert_eq!(symbols.len(), 2);
+        assert!(symbols
+            .iter()
+            .any(|s| s.name == "a" && s.kind == SymbolKind::Variable));
+        assert!(symbols
+            .iter()
+            .any(|s| s.name == "b" && s.kind == SymbolKind::Variable));
+    }
+
+    #[test]
+    fn test_no_variable_inside_function() {
+        let mut parser = PythonParser::new().unwrap();
+        let code = r#"
+def my_func():
+    local_var = 1
+"#;
+        let symbols = parser.parse_file(Path::new("test.py"), code).unwrap();
+
+        assert_eq!(symbols.len(), 1);
+        assert_eq!(symbols[0].name, "my_func");
+        assert_eq!(symbols[0].kind, SymbolKind::Function);
+        assert!(!symbols.iter().any(|s| s.name == "local_var"));
+    }
+
+    #[test]
+    fn test_no_variable_inside_class() {
+        let mut parser = PythonParser::new().unwrap();
+        let code = r#"
+class MyClass:
+    class_attr = 1
+"#;
+        let symbols = parser.parse_file(Path::new("test.py"), code).unwrap();
+
+        assert_eq!(symbols.len(), 1);
+        assert_eq!(symbols[0].name, "MyClass");
+        assert_eq!(symbols[0].kind, SymbolKind::Class);
+        assert!(!symbols.iter().any(|s| s.name == "class_attr"));
+    }
+
+    #[test]
+    fn test_variable_column_positions() {
+        use crate::parser::{create_parser, ParserBackend};
+
+        for backend in [ParserBackend::TreeSitter, ParserBackend::Ruff] {
+            let parser = create_parser(backend).unwrap();
+
+            let code = "MY_VAR = 42";
+            let symbols = parser.parse_file(Path::new("test.py"), code).unwrap();
+            assert_eq!(symbols.len(), 1);
+            assert_eq!(symbols[0].name, "MY_VAR");
+            assert_eq!(symbols[0].kind, SymbolKind::Variable);
+            assert_eq!(symbols[0].line, 1);
+            assert_eq!(
+                symbols[0].column, 0,
+                "Variable name should start at column 0 for parser {:?}",
+                backend
+            );
+        }
+    }
+
+    #[test]
     fn test_column_positions() {
         use crate::parser::{create_parser, ParserBackend};
 
