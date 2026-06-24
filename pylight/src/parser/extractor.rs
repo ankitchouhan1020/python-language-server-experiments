@@ -44,6 +44,9 @@ impl<'a> SymbolExtractor<'a> {
             "decorated_definition" => {
                 self.extract_decorated(node)?;
             }
+            "assignment" => {
+                self.extract_assignment(node)?;
+            }
             _ => {
                 // Recursively visit children for other node types
                 let mut cursor = node.walk();
@@ -188,6 +191,59 @@ impl<'a> SymbolExtractor<'a> {
                     break;
                 }
                 _ => {}
+            }
+        }
+        Ok(())
+    }
+
+    fn extract_assignment(&mut self, node: Node) -> Result<()> {
+        // Only extract module-level assignments
+        if !self.context_stack.is_empty() {
+            return Ok(());
+        }
+
+        if let Some(left) = node.child_by_field_name("left") {
+            self.extract_assignment_targets(left)?;
+        }
+
+        // Handle chained assignments: a = b = 10
+        // tree-sitter represents this as assignment(left=a, right=assignment(left=b, right=10))
+        if let Some(right) = node.child_by_field_name("right") {
+            if right.kind() == "assignment" {
+                self.extract_assignment(right)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn extract_assignment_targets(&mut self, node: Node) -> Result<()> {
+        match node.kind() {
+            "identifier" => {
+                let name = self.get_node_text(node);
+                let line = node.start_position().row + 1;
+                let column = node.start_position().column;
+
+                let module = self
+                    .path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("")
+                    .to_string();
+
+                let symbol =
+                    Symbol::new(name, SymbolKind::Variable, self.path.clone(), line, column)
+                        .with_module(module);
+                self.symbols.push(symbol);
+            }
+            "pattern_list" | "tuple_pattern" => {
+                let mut cursor = node.walk();
+                for child in node.children(&mut cursor) {
+                    self.extract_assignment_targets(child)?;
+                }
+            }
+            _ => {
+                // Skip attribute access (obj.attr), subscripts (d["key"]), etc.
             }
         }
         Ok(())

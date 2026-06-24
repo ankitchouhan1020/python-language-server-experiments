@@ -3,10 +3,11 @@
 use crate::{Error, Result, Symbol, SymbolKind};
 use ruff_python_ast::{
     visitor::{self, Visitor},
-    Mod, Stmt,
+    Expr, Mod, Stmt,
 };
 use ruff_python_parser::{parse, Mode};
 use ruff_source_file::{LineIndex, SourceCode};
+use ruff_text_size::Ranged;
 use std::path::{Path, PathBuf};
 
 use super::r#trait::Parser;
@@ -104,6 +105,41 @@ impl<'a> SymbolExtractor<'a> {
         // Ruff returns 1-based line and column, but we need 0-based column for compatibility
         (location.line.get(), location.character_offset.get() - 1)
     }
+
+    fn extract_assign_target(&mut self, target: &Expr) {
+        match target {
+            Expr::Name(name) => {
+                let name_str = name.id.to_string();
+                let (line, column) = self.get_line_column(name.range.start().to_u32());
+
+                let module_path = self
+                    .file_path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+
+                let symbol = Symbol::new(
+                    name_str,
+                    SymbolKind::Variable,
+                    self.file_path.clone(),
+                    line,
+                    column,
+                )
+                .with_module(module_path);
+
+                self.symbols.push(symbol);
+            }
+            Expr::Tuple(tuple) => {
+                for elt in &tuple.elts {
+                    self.extract_assign_target(elt);
+                }
+            }
+            _ => {
+                // Skip attribute access, subscript, starred, etc.
+            }
+        }
+    }
 }
 
 impl<'a> Visitor<'a> for SymbolExtractor<'a> {
@@ -169,6 +205,46 @@ impl<'a> Visitor<'a> for SymbolExtractor<'a> {
                 self.context_stack.push(Context::Class(name_str));
                 visitor::walk_stmt(self, stmt);
                 self.context_stack.pop();
+            }
+            Stmt::Assign(assign) => {
+                if self.context_stack.is_empty() {
+                    for target in &assign.targets {
+                        self.extract_assign_target(target);
+                    }
+                }
+            }
+            Stmt::AnnAssign(ann_assign) => {
+                if self.context_stack.is_empty() {
+                    self.extract_assign_target(&ann_assign.target);
+                }
+            }
+            Stmt::TypeAlias(type_alias) => {
+                if self.context_stack.is_empty() {
+                    let name_str = match type_alias.name.as_ref() {
+                        Expr::Name(name) => name.id.to_string(),
+                        _ => return,
+                    };
+                    let (line, column) =
+                        self.get_line_column(type_alias.name.range().start().to_u32());
+
+                    let module_path = self
+                        .file_path
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("unknown")
+                        .to_string();
+
+                    let symbol = Symbol::new(
+                        name_str,
+                        SymbolKind::Variable,
+                        self.file_path.clone(),
+                        line,
+                        column,
+                    )
+                    .with_module(module_path);
+
+                    self.symbols.push(symbol);
+                }
             }
             _ => visitor::walk_stmt(self, stmt),
         }

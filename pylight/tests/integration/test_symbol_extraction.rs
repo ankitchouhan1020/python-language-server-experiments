@@ -1,4 +1,7 @@
-use pylight::{PythonParser, SymbolKind};
+use pylight::{
+    parser::{create_parser, ParserBackend},
+    PythonParser, SymbolKind,
+};
 use std::path::Path;
 
 #[test]
@@ -127,6 +130,74 @@ fn test_decorated_symbols() {
         assert!(
             symbols.iter().any(|s| s.name == name),
             "Missing decorated function: {name}"
+        );
+    }
+}
+
+#[test]
+fn test_extract_global_variables() {
+    let content = include_str!("../fixtures/variables.py");
+    let path = Path::new("tests/fixtures/variables.py");
+
+    // Test both parser backends
+    for backend in [ParserBackend::TreeSitter, ParserBackend::Ruff] {
+        let parser = create_parser(backend).unwrap();
+        let symbols = parser
+            .parse_file(path, content)
+            .expect("Failed to parse file");
+
+        // These should be extracted as Variable
+        let expected_variables = vec![
+            "MY_CONST",
+            "config",
+            "name",
+            "MY_VAR",
+            "server_name",
+            "a",
+            "b",
+            "x",
+            "y",
+            "MyType",
+        ];
+
+        for var_name in &expected_variables {
+            assert!(
+                symbols
+                    .iter()
+                    .any(|s| s.name == *var_name && s.kind == SymbolKind::Variable),
+                "Missing variable '{}' for parser {:?}",
+                var_name,
+                backend
+            );
+        }
+
+        // These should NOT be extracted as Variable
+        let excluded = vec!["local_var", "class_attr", "instance_attr"];
+        for name in &excluded {
+            assert!(
+                !symbols
+                    .iter()
+                    .any(|s| s.name == *name && s.kind == SymbolKind::Variable),
+                "Should not extract '{}' as variable for parser {:?}",
+                name,
+                backend
+            );
+        }
+
+        // Functions and classes should still work
+        assert!(
+            symbols
+                .iter()
+                .any(|s| s.name == "some_function" && s.kind == SymbolKind::Function),
+            "Missing function 'some_function' for parser {:?}",
+            backend
+        );
+        assert!(
+            symbols
+                .iter()
+                .any(|s| s.name == "SomeClass" && s.kind == SymbolKind::Class),
+            "Missing class 'SomeClass' for parser {:?}",
+            backend
         );
     }
 }
